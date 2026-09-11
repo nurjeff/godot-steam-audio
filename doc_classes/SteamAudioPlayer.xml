@@ -61,14 +61,11 @@
 		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="false">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.
 		</member>
-		<member name="pathing_alternate_routes" type="bool" setter="set_path_alternate_routes_on" getter="is_path_alternate_routes_on" default="false">
-			When a baked path is blocked, search for another one in real time. Costs CPU per source; without it a blocked path simply goes quiet.
-		</member>
 		<member name="pathing_ambisonics_order" type="int" setter="set_pathing_order" getter="get_pathing_order" default="1">
 			Ambisonic order used to place the paths in space. Clamped to [member SteamAudioConfig.max_ambisonics_order].
 		</member>
 		<member name="pathing_validation" type="bool" setter="set_path_validation_on" getter="is_path_validation_on" default="true">
-			Re-check baked paths against the current scene, so a door that closes cuts the path it was baked through.
+			Re-check baked paths against the current scene, so a door that closes cuts the path it was baked through and a different route is used when one exists. Costs a path search per source on the frames where a baked path is blocked; turn it off for a level with no moving geometry.
 		</member>
 		<member name="pathing_visibility_radius" type="float" setter="set_path_vis_radius" getter="get_path_vis_radius" default="1.0">
 			Probe radius used when re-checking visibility. Match the value the batch was baked with.

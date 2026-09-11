@@ -7,6 +7,7 @@
 #include "server_init.hpp"
 #include "steam_audio.hpp"
 #include <algorithm>
+#include <cmath>
 #include "stream.hpp"
 
 void SteamAudioPlayer::_bind_methods() {
@@ -56,14 +57,14 @@ void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pathing_order", "p_pathing_order"), &SteamAudioPlayer::set_pathing_order);
 	ClassDB::bind_method(D_METHOD("is_path_validation_on"), &SteamAudioPlayer::is_path_validation_on);
 	ClassDB::bind_method(D_METHOD("set_path_validation_on", "p_on"), &SteamAudioPlayer::set_path_validation_on);
-	ClassDB::bind_method(D_METHOD("is_path_alternate_routes_on"), &SteamAudioPlayer::is_path_alternate_routes_on);
-	ClassDB::bind_method(D_METHOD("set_path_alternate_routes_on", "p_on"), &SteamAudioPlayer::set_path_alternate_routes_on);
 	ClassDB::bind_method(D_METHOD("get_path_vis_radius"), &SteamAudioPlayer::get_path_vis_radius);
 	ClassDB::bind_method(D_METHOD("set_path_vis_radius", "p_v"), &SteamAudioPlayer::set_path_vis_radius);
 	ClassDB::bind_method(D_METHOD("get_path_vis_threshold"), &SteamAudioPlayer::get_path_vis_threshold);
 	ClassDB::bind_method(D_METHOD("set_path_vis_threshold", "p_v"), &SteamAudioPlayer::set_path_vis_threshold);
 	ClassDB::bind_method(D_METHOD("get_path_vis_range"), &SteamAudioPlayer::get_path_vis_range);
 	ClassDB::bind_method(D_METHOD("set_path_vis_range", "p_v"), &SteamAudioPlayer::set_path_vis_range);
+	ClassDB::bind_method(D_METHOD("is_path_active"), &SteamAudioPlayer::is_path_active);
+	ClassDB::bind_method(D_METHOD("get_path_level"), &SteamAudioPlayer::get_path_level);
 	ClassDB::bind_method(D_METHOD("is_baked_reverb_on"), &SteamAudioPlayer::is_baked_reverb_on);
 	ClassDB::bind_method(D_METHOD("set_baked_reverb_on", "p_on"), &SteamAudioPlayer::set_baked_reverb_on);
 
@@ -100,7 +101,6 @@ void SteamAudioPlayer::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing"), "set_pathing_on", "is_pathing_on");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathing_ambisonics_order", PROPERTY_HINT_RANGE, "0,3,1"), "set_pathing_order", "get_pathing_order");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing_validation"), "set_path_validation_on", "is_path_validation_on");
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing_alternate_routes"), "set_path_alternate_routes_on", "is_path_alternate_routes_on");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_radius", PROPERTY_HINT_RANGE, "0.1,10.0,0.1"), "set_path_vis_radius", "get_path_vis_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_threshold", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_path_vis_threshold", "get_path_vis_threshold");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_range", PROPERTY_HINT_RANGE, "1.0,500.0,1.0,or_greater"), "set_path_vis_range", "get_path_vis_range");
@@ -432,14 +432,28 @@ void SteamAudioPlayer::set_pathing_order(int p_pathing_order) {
 }
 bool SteamAudioPlayer::is_path_validation_on() { return cfg.path_validation; }
 void SteamAudioPlayer::set_path_validation_on(bool p_on) { cfg.path_validation = p_on; cfg_dirty.store(true); }
-bool SteamAudioPlayer::is_path_alternate_routes_on() { return cfg.path_alternate_routes; }
-void SteamAudioPlayer::set_path_alternate_routes_on(bool p_on) { cfg.path_alternate_routes = p_on; cfg_dirty.store(true); }
 float SteamAudioPlayer::get_path_vis_radius() { return cfg.path_vis_radius; }
 void SteamAudioPlayer::set_path_vis_radius(float p_v) { cfg.path_vis_radius = p_v; cfg_dirty.store(true); }
 float SteamAudioPlayer::get_path_vis_threshold() { return cfg.path_vis_threshold; }
 void SteamAudioPlayer::set_path_vis_threshold(float p_v) { cfg.path_vis_threshold = p_v; cfg_dirty.store(true); }
 float SteamAudioPlayer::get_path_vis_range() { return cfg.path_vis_range; }
 void SteamAudioPlayer::set_path_vis_range(float p_v) { cfg.path_vis_range = p_v; cfg_dirty.store(true); }
+bool SteamAudioPlayer::is_path_active() {
+	return is_local_state_init.load() && local_state.path_active.load();
+}
+
+float SteamAudioPlayer::get_path_level() {
+	if (!is_local_state_init.load()) {
+		return 0.0f;
+	}
+	std::lock_guard<std::mutex> lock(local_state.path_mux);
+	float sum = 0.0f;
+	for (float coefficient : local_state.path_sh) {
+		sum += coefficient * coefficient;
+	}
+	return std::sqrt(sum);
+}
+
 bool SteamAudioPlayer::is_baked_reverb_on() { return cfg.is_baked_reverb_on; }
 void SteamAudioPlayer::set_baked_reverb_on(bool p_on) { cfg.is_baked_reverb_on = p_on; cfg_dirty.store(true); }
 

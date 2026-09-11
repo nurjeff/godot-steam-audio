@@ -428,6 +428,20 @@ void SteamAudioServer::remove_probe_batch(SteamAudioProbeBatch *batch) {
 	sim_needs_commit.store(true);
 }
 
+void SteamAudioServer::set_dynamic_geometry_present(bool present) {
+	if (dynamic_meshes.empty()) {
+		return;
+	}
+	for (IPLInstancedMesh mesh : dynamic_meshes) {
+		if (present) {
+			iplInstancedMeshAdd(mesh, global_state.scene);
+		} else {
+			iplInstancedMeshRemove(mesh, global_state.scene);
+		}
+	}
+	iplSceneCommit(global_state.scene);
+}
+
 bool SteamAudioServer::rebuild_probe_batch(SteamAudioProbeBatch *batch, const String &path) {
 	if (!self->is_global_state_init.load()) {
 		return batch->rebuild(path);
@@ -489,8 +503,11 @@ void SteamAudioServer::run_pathing() {
 		inputs.visThreshold = ls->cfg.path_vis_threshold;
 		inputs.visRange = ls->cfg.path_vis_range;
 		inputs.pathingOrder = ls->cfg.pathing_order;
+		// Steam Audio 4.8 checks a baked path against the current scene, and then uses it anyway
+		// unless findAlternatePaths sends it back to the path finder. Validation on its own is a
+		// no-op, so the two flags move together.
 		inputs.enableValidation = ls->cfg.path_validation ? IPL_TRUE : IPL_FALSE;
-		inputs.findAlternatePaths = ls->cfg.path_alternate_routes ? IPL_TRUE : IPL_FALSE;
+		inputs.findAlternatePaths = inputs.enableValidation;
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_PATHING, &inputs);
 		ls->path_in_sim = true;
 		num_path_srcs++;
@@ -518,12 +535,16 @@ void SteamAudioServer::run_pathing() {
 		for (int i = 0; i < IPL_NUM_BANDS; i++) {
 			ls->path_outputs.eqCoeffs[i] = outputs.pathing.eqCoeffs[i];
 		}
+		float energy = 0.0f;
 		if (outputs.pathing.shCoeffs != nullptr) {
 			for (int i = 0; i < channels; i++) {
 				ls->path_sh[i] = outputs.pathing.shCoeffs[i];
+				energy += ls->path_sh[i] * ls->path_sh[i];
 			}
 		}
-		ls->path_active.store(outputs.pathing.shCoeffs != nullptr);
+		// The coefficients come back all-zero when nothing reaches the listener, which is the
+		// only signal that there is no route. Skip the effect rather than convolve silence.
+		ls->path_active.store(energy > 0.0f);
 	}
 }
 
@@ -581,6 +602,7 @@ void SteamAudioServer::add_dynamic_mesh(IPLInstancedMesh mesh) {
 	}
 	wait_for_refl_idle();
 	iplInstancedMeshAdd(mesh, global_state.scene);
+	dynamic_meshes.push_back(mesh);
 	scene_needs_commit.store(true);
 }
 
@@ -590,6 +612,10 @@ void SteamAudioServer::remove_dynamic_mesh(IPLInstancedMesh mesh) {
 	}
 	wait_for_refl_idle();
 	iplInstancedMeshRemove(mesh, global_state.scene);
+	auto found = std::find(dynamic_meshes.begin(), dynamic_meshes.end(), mesh);
+	if (found != dynamic_meshes.end()) {
+		dynamic_meshes.erase(found);
+	}
 	// Drop any transform update still queued for a mesh that is going away.
 	{
 		std::lock_guard<std::mutex> lock(scene_mux);

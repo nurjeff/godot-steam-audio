@@ -41,11 +41,13 @@ private:
 	int reflection_diffuse_samples = 1024;
 	float irradiance_min_distance = 1.0f;
 
+	bool bake_static_only = true;
 	int bake_threads = 0;
 
 	IPLMatrix4x4 volume_transform() const;
 	int threads() const;
 	bool bake_internal();
+	void restore_dynamic_geometry();
 	bool load_internal(const String &path);
 
 protected:
@@ -112,6 +114,8 @@ public:
 	void set_reflection_diffuse_samples(int p_v) { reflection_diffuse_samples = p_v; }
 	float get_irradiance_min_distance() const { return irradiance_min_distance; }
 	void set_irradiance_min_distance(float p_v) { irradiance_min_distance = p_v; }
+	bool is_bake_static_only() const { return bake_static_only; }
+	void set_bake_static_only(bool p_on) { bake_static_only = p_on; }
 	int get_bake_threads() const { return bake_threads; }
 	void set_bake_threads(int p_v) { bake_threads = p_v; }
 

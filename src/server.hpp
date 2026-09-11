@@ -54,7 +54,8 @@ private:
 	// meshes to add to the global state scene after it's initialized.
 	int num_static_meshes = 0;
 	std::vector<IPLStaticMesh> static_meshes_to_add;
-	std::vector<IPLStaticMesh> dynamic_meshes_to_add;
+	// Instanced meshes currently in the scene, so a bake can leave them out.
+	std::vector<IPLInstancedMesh> dynamic_meshes;
 
 	// TODO: allow for multiple
 	SteamAudioListener *listener = nullptr;
@@ -88,6 +89,9 @@ public:
 	void remove_probe_batch(SteamAudioProbeBatch *batch);
 	// Bakes or loads a batch with the reflection simulation parked, then re-arms the simulator.
 	bool rebuild_probe_batch(SteamAudioProbeBatch *batch, const String &path);
+	// Takes moving geometry out of the scene, or puts it back. Baked data describes the level,
+	// not where a door happened to be when the bake ran. Safe window only.
+	void set_dynamic_geometry_present(bool present);
 	// The batch sources use for pathing. One batch per level is the usual setup.
 	IPLProbeBatch get_pathing_probes() const;
 	int get_static_mesh_count() const { return num_static_meshes; }

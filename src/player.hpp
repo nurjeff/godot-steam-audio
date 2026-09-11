@@ -45,7 +45,6 @@ private:
 		0.1f,
 		50.0f,
 		true,
-		false,
 		false
 	};
 
@@ -122,8 +121,6 @@ public:
 	void set_pathing_order(int p_pathing_order);
 	bool is_path_validation_on();
 	void set_path_validation_on(bool p_on);
-	bool is_path_alternate_routes_on();
-	void set_path_alternate_routes_on(bool p_on);
 	float get_path_vis_radius();
 	void set_path_vis_radius(float p_v);
 	float get_path_vis_threshold();
@@ -132,6 +129,11 @@ public:
 	void set_path_vis_range(float p_v);
 	bool is_baked_reverb_on();
 	void set_baked_reverb_on(bool p_on);
+
+	// Whether the simulation found a route to the listener this frame, and how much energy it
+	// carries. Read-only; the point is to be able to see pathing working.
+	bool is_path_active();
+	float get_path_level();
 
 	void play_stream(const Ref<AudioStream> &p_stream, float p_from_offset, float p_volume_db, float p_pitch_scale);
 	Ref<AudioStream> get_inner_stream();

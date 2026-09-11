@@ -105,6 +105,10 @@ void SteamAudioProbeBatch::_bind_methods() {
 
 	ADD_GROUP("", "");
 
+	ClassDB::bind_method(D_METHOD("is_bake_static_only"), &SteamAudioProbeBatch::is_bake_static_only);
+	ClassDB::bind_method(D_METHOD("set_bake_static_only", "value"), &SteamAudioProbeBatch::set_bake_static_only);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "bake_static_only"), "set_bake_static_only", "is_bake_static_only");
+
 	ClassDB::bind_method(D_METHOD("get_bake_threads"), &SteamAudioProbeBatch::get_bake_threads);
 	ClassDB::bind_method(D_METHOD("set_bake_threads", "value"), &SteamAudioProbeBatch::set_bake_threads);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "bake_threads", PROPERTY_HINT_RANGE, "0,32,1"), "set_bake_threads", "get_bake_threads");
@@ -190,6 +194,11 @@ bool SteamAudioProbeBatch::bake_internal() {
 	if (probes == nullptr) {
 		return false;
 	}
+	// Baked data describes the level. A door that happened to be shut when the bake ran would
+	// otherwise be baked in as a wall, and no path would ever be found through its doorway.
+	if (bake_static_only) {
+		SteamAudioServer::get_singleton()->set_dynamic_geometry_present(false);
+	}
 	// Probe generation ray-casts the scene, which needs an up to date acceleration structure.
 	iplSceneCommit(gs->scene);
 
@@ -207,6 +216,7 @@ bool SteamAudioProbeBatch::bake_internal() {
 	handleErr(iplProbeBatchCreate(gs->ctx, &batch));
 	if (batch == nullptr) {
 		iplProbeArrayRelease(&probes);
+		restore_dynamic_geometry();
 		return false;
 	}
 	iplProbeBatchAddProbeArray(batch, probes);
@@ -214,6 +224,7 @@ bool SteamAudioProbeBatch::bake_internal() {
 	iplProbeBatchCommit(batch);
 
 	if (probe_count == 0) {
+		restore_dynamic_geometry();
 		UtilityFunctions::push_warning(vformat(
 				"[godot-steam-audio] %s: no probes were generated. Probes sit on floors, so the volume "
 				"has to cover acoustic geometry. Volume centre %v, size %v, %d meshes in the scene.",
@@ -259,6 +270,7 @@ bool SteamAudioProbeBatch::bake_internal() {
 		iplReflectionsBakerBake(gs->ctx, &params, bake_progress, nullptr);
 	}
 
+	restore_dynamic_geometry();
 	uint64_t took = Time::get_singleton()->get_ticks_msec() - started;
 	SteamAudio::log(SteamAudio::log_info, vformat("Baked %d probes in %d ms.", probe_count, int(took)).utf8().get_data());
 
@@ -267,6 +279,12 @@ bool SteamAudioProbeBatch::bake_internal() {
 	}
 	emit_signal("baked", probe_count);
 	return true;
+}
+
+void SteamAudioProbeBatch::restore_dynamic_geometry() {
+	if (bake_static_only) {
+		SteamAudioServer::get_singleton()->set_dynamic_geometry_present(true);
+	}
 }
 
 bool SteamAudioProbeBatch::save_data(const String &path) {

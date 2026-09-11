@@ -46,6 +46,9 @@
 		</method>
 	</methods>
 	<members>
+		<member name="bake_static_only" type="bool" setter="set_bake_static_only" getter="is_bake_static_only" default="true">
+			Leave [SteamAudioDynamicGeometry] out of the bake. A door that happened to be shut when the bake ran would otherwise be baked in as a wall, and no path would ever be found through its doorway. [member SteamAudioPlayer.pathing_validation] is what handles it at run time.
+		</member>
 		<member name="bake_threads" type="int" setter="set_bake_threads" getter="get_bake_threads" default="0">
 			Threads to bake with. Zero uses half the processors.
 		</member>
