@@ -1,5 +1,7 @@
 #include "server.hpp"
+#include "godot_cpp/classes/dir_access.hpp"
 #include "godot_cpp/classes/engine.hpp"
+#include "godot_cpp/classes/file_access.hpp"
 #include "godot_cpp/classes/project_settings.hpp"
 #include "godot_cpp/core/class_db.hpp"
 #include "godot_cpp/core/memory.hpp"
@@ -503,8 +505,39 @@ SteamAudioServer::~SteamAudioServer() {
 	iplContextRelease(&self->global_state.ctx);
 }
 
+bool SteamAudioServer::save_scene_obj(const String &path) {
+	if (!self->is_global_state_init.load()) {
+		UtilityFunctions::push_error("[godot-steam-audio] No acoustic scene to export; it only exists while the game is running.");
+		return false;
+	}
+	String out = path.is_empty() ? String("user://steam_audio_scene.obj") : path;
+	if (!out.to_lower().ends_with(".obj")) {
+		out += ".obj";
+	}
+	String dir = out.get_base_dir();
+	if (!dir.is_empty() && !DirAccess::dir_exists_absolute(dir)) {
+		DirAccess::make_dir_recursive_absolute(dir);
+	}
+	// Steam Audio fprintf()s into whatever fopen returns without checking it, so make sure the
+	// path is writable before handing it over.
+	Ref<FileAccess> probe = FileAccess::open(out, FileAccess::WRITE);
+	if (probe.is_null()) {
+		UtilityFunctions::push_error("[godot-steam-audio] Cannot write ", out, ".");
+		return false;
+	}
+	probe->close();
+
+	CharString global = ProjectSettings::get_singleton()->globalize_path(out).utf8();
+	std::lock_guard<std::mutex> tick_lock(self->tick_mux);
+	self->wait_for_refl_idle();
+	self->flush_scene_changes();
+	iplSceneSaveOBJ(self->global_state.scene, const_cast<char *>(global.get_data()));
+	return true;
+}
+
 void SteamAudioServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("tick"), &SteamAudioServer::tick);
+	ClassDB::bind_method(D_METHOD("save_scene_obj", "path"), &SteamAudioServer::save_scene_obj, DEFVAL("user://steam_audio_scene.obj"));
 	ClassDB::bind_static_method("SteamAudioServer", D_METHOD("get_singleton"),
 			&SteamAudioServer::get_singleton);
 }

@@ -13,6 +13,14 @@
 			<description>
 			</description>
 		</method>
+		<method name="save_scene_obj">
+			<return type="bool" />
+			<param index="0" name="path" type="String" default="&quot;user://steam_audio_scene.obj&quot;" />
+			<description>
+				Writes the committed acoustic scene to an OBJ file, with a sibling MTL, so you can open it in a modelling tool and compare it against the visible level. Useful when occlusion or reverb does not match what you see.
+				Only works while the game is running, since the scene is built from the geometry nodes as they enter the tree.
+			</description>
+		</method>
 		<method name="tick">
 			<return type="void" />
 			<description>

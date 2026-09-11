@@ -5,6 +5,7 @@
 #include "godot_cpp/classes/thread.hpp"
 #include "listener.hpp"
 #include "steam_audio.hpp"
+#include <godot_cpp/variant/string.hpp>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -81,6 +82,10 @@ public:
 	// either must call this first. Game thread only: the simulation is started exclusively by
 	// tick() on that same thread, so once this returns the caller owns the window.
 	void wait_for_refl_idle();
+
+	// Writes the committed acoustic scene to an OBJ (plus a sibling MTL) so you can open it in
+	// a modelling tool and see what Steam Audio actually got. Runtime only.
+	bool save_scene_obj(const String &path);
 
 	void tick();
 };
