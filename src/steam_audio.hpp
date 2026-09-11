@@ -30,16 +30,17 @@ public:
 	static void log(GodotSteamAudioLogLevel lvl, const char *str);
 };
 
+// Every handle starts null so a failed creation is detectable rather than garbage.
 struct GlobalSteamAudioState {
-	IPLScene scene;
-	IPLAudioSettings audio_cfg;
-	IPLContext ctx;
-	IPLHRTF hrtf;
-	IPLAmbisonicsEncodeEffect ambi_enc_effect;
-	IPLAmbisonicsDecodeEffect ambi_dec_effect;
-	IPLSimulationSettings sim_cfg;
-	IPLSimulator sim;
-	IPLCoordinateSpace3 listener_coords;
+	IPLScene scene = nullptr;
+	IPLAudioSettings audio_cfg{};
+	IPLContext ctx = nullptr;
+	IPLHRTF hrtf = nullptr;
+	IPLAmbisonicsEncodeEffect ambi_enc_effect = nullptr;
+	IPLAmbisonicsDecodeEffect ambi_dec_effect = nullptr;
+	IPLSimulationSettings sim_cfg{};
+	IPLSimulator sim = nullptr;
+	IPLCoordinateSpace3 listener_coords{};
 	std::mutex refl_ir_lock;
 };
 

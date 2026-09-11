@@ -145,7 +145,10 @@ SteamAudioPlayer::~SteamAudioPlayer() {
 		return;
 	}
 	is_local_state_init.store(false);
-	auto gs = SteamAudioServer::get_singleton()->get_global_state();
+	auto gs = SteamAudioServer::get_singleton()->get_global_state(false);
+	if (gs == nullptr) {
+		return;
+	}
 
 	// Removes and commits with the reflection simulation parked, so the source is no longer
 	// part of any simulation before it is released.
@@ -192,6 +195,12 @@ LocalSteamAudioState *SteamAudioPlayer::get_local_state() {
 void SteamAudioPlayer::init_local_state() {
 	SteamAudio::log(SteamAudio::log_debug, "init local state");
 	auto gs = SteamAudioServer::get_singleton()->get_global_state();
+	if (gs == nullptr) {
+		// Steam Audio is unavailable; the stream falls through to silence and the player keeps
+		// behaving as the AudioStreamPlayer3D it is.
+		can_load_local_state.store(false);
+		return;
+	}
 	local_state.cfg = cfg;
 
 	IPLSourceSettings src_cfg{};
@@ -202,9 +211,9 @@ void SteamAudioPlayer::init_local_state() {
 	handleErr(iplSourceCreate(gs->sim, &src_cfg, &local_state.src.src));
 	SteamAudioServer::get_singleton()->add_source(local_state.src.src);
 
-	// TODO: check if we can't create effects globally and use their Reset functions.
-	// If we create these globally and use them for all sources, then strange things happen
-	// (e.g. one source may start to play audio from all sources and positioning gets screwed)
+	// One set of effects per source, not one shared set. Each carries its own overlap-save and
+	// filter state, so sharing them bleeds one source's audio into another and scrambles the
+	// positioning. This is the memory cost of a source.
 	IPLDirectEffectSettings dir_effect_cfg;
 	dir_effect_cfg.numChannels = 2;
 	handleErr(iplDirectEffectCreate(gs->ctx, &gs->audio_cfg, &dir_effect_cfg, &local_state.fx.direct));

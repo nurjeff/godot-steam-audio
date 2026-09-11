@@ -372,8 +372,16 @@ void SteamAudioStreamPlayback::_bind_methods() {
 }
 
 int SteamAudioStreamPlayback::play_stream(const Ref<AudioStream> &p_stream, float p_from_offset, float p_volume_db, float p_pitch_scale) {
-	if (Engine::get_singleton()->is_editor_hint()) {
-		return 0;
+	// Volume and pitch live on the player, which has already applied them by the time this runs.
+	(void)p_volume_db;
+	(void)p_pitch_scale;
+	restart(p_stream, p_from_offset);
+	return 0;
+}
+
+void SteamAudioStreamPlayback::restart(const Ref<AudioStream> &p_stream, float p_from_offset) {
+	if (Engine::get_singleton()->is_editor_hint() || p_stream.is_null()) {
+		return;
 	}
 
 	stream = p_stream;
@@ -385,15 +393,13 @@ int SteamAudioStreamPlayback::play_stream(const Ref<AudioStream> &p_stream, floa
 	tail_active = false;
 	tail_done = false;
 	tail_requested.store(false);
-
-	return 0;
 }
 
 void SteamAudioStreamPlayback::_start(double from_pos) {
 	if (stream_playback == nullptr) {
-		if (stream != nullptr) {
+		if (stream.is_valid()) {
 			is_active.store(true);
-			play_stream(stream, float(from_pos), 0.0, 1.0); // FIXME: do not assume these params
+			restart(stream, float(from_pos));
 		}
 		return;
 	} else if (stream_playback->is_playing()) {

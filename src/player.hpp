@@ -17,8 +17,8 @@ private:
 	// since the player has stopped (even though the playback still mixes...)
 	Ref<AudioStreamPlayback> pb;
 
-	// TODO: we can probably move these values inside local state
-	// for cleanup and the ability to adjust them at runtime
+	// The authored settings. process_internal copies them into the local state whenever a setter
+	// marks them dirty, which is what makes the properties adjustable at runtime.
 	SteamAudioSourceConfig cfg{
 		4.0f,
 		32,

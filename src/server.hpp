@@ -23,6 +23,8 @@ private:
 	std::vector<LocalSteamAudioState *> local_states;
 
 	std::atomic<bool> is_global_state_init;
+	// Set once initialization has failed, so it is reported once instead of retried every frame.
+	bool init_failed = false;
 	std::atomic<bool> is_refl_thread_processing;
 	std::atomic<bool> is_running;
 	std::atomic<bool> local_states_have_changed;
@@ -58,10 +60,11 @@ private:
 	std::vector<IPLInstancedMesh> dynamic_meshes;
 	bool dynamic_geometry_hidden = false;
 
-	// TODO: allow for multiple
+	// One listener per process: Steam Audio simulates relative to a single point, and a split
+	// screen would need a simulation per view.
 	SteamAudioListener *listener = nullptr;
 
-	void init_scene(IPLSceneSettings *scene_cfg);
+	void release_global_state();
 	void start_refl_sim();
 	void run_refl_sim();
 	Ref<Thread> refl_thread;

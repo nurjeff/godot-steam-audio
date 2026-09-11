@@ -82,17 +82,17 @@ void SteamAudioGeometry::create_geometry() {
 		return;
 	}
 
+	// Entering the tree is what brings Steam Audio up, so this is where it can fail.
+	auto gs = SteamAudioServer::get_singleton()->get_global_state();
+	if (gs == nullptr) {
+		return;
+	}
 	created.store(true);
 
-	// FIXME: we probably don't even have a global state yet
 	if (Object::cast_to<MeshInstance3D>(get_parent())) {
-		meshes = create_meshes_from_mesh_inst_3d(
-				Object::cast_to<MeshInstance3D>(get_parent()),
-				SteamAudioServer::get_singleton()->get_global_state()->scene, mat);
+		meshes = create_meshes_from_mesh_inst_3d(Object::cast_to<MeshInstance3D>(get_parent()), gs->scene, mat);
 	} else if (Object::cast_to<CollisionShape3D>(get_parent())) {
-		meshes = create_meshes_from_coll_inst_3d(
-				Object::cast_to<CollisionShape3D>(get_parent()),
-				SteamAudioServer::get_singleton()->get_global_state()->scene, mat);
+		meshes = create_meshes_from_coll_inst_3d(Object::cast_to<CollisionShape3D>(get_parent()), gs->scene, mat);
 	} else {
 		UtilityFunctions::push_error("The parent of SteamAudioGeometry must be a MeshInstance3D or a CollisionShape3D.");
 		return;

@@ -111,8 +111,11 @@ void SteamAudioConfig::ready_internal() {
 				"the lifetime of the process.");
 	}
 
-	// Initialize global state
-	SteamAudioServer::get_singleton()->get_global_state();
+	// Bringing Steam Audio up here rather than on the first geometry means the settings on this
+	// node are the ones that get used.
+	if (SteamAudioServer::get_singleton()->get_global_state() == nullptr) {
+		return;
+	}
 	set_physics_process(true);
 }
 

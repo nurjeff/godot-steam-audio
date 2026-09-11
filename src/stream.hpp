@@ -77,6 +77,9 @@ public:
 	virtual int32_t _mix(AudioFrame *buffer, float rate_scale, int32_t frames) override;
 	int play_stream(const Ref<AudioStream> &p_stream, float p_from_offset,
 			float p_volume_db, float p_pitch_scale);
+	// Starts the inner stream and clears the block and tail state. Volume and pitch are the
+	// player's, not the playback's, which is why play_stream ignores those two arguments.
+	void restart(const Ref<AudioStream> &p_stream, float p_from_offset);
 	void _start(double from_pos) override;
 	void _stop() override;
 	bool _is_playing() const override;

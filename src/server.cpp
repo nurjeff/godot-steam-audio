@@ -134,6 +134,10 @@ void SteamAudioServer::tick() {
 	}
 
 	int num_refl_srcs = 0;
+	// Fixed for the rest of this tick, and each read of it is a call into the engine.
+	const Vector3 listener_position = listener != nullptr && listener->is_inside_tree()
+			? listener->get_global_position()
+			: Vector3();
 
 	// Never block the game thread on the audio thread: a frame without fresh impulse responses
 	// is better than a stall behind a convolution.
@@ -151,7 +155,7 @@ void SteamAudioServer::tick() {
 				continue;
 			}
 
-			if (ls->src.player->get_global_position().distance_to(listener->get_global_position()) > ls->cfg.max_refl_dist) {
+			if (ls->src.player->get_global_position().distance_to(listener_position) > ls->cfg.max_refl_dist) {
 				ls->refl_in_range.store(false);
 				continue;
 			}
@@ -174,7 +178,7 @@ void SteamAudioServer::tick() {
 		if (listener == nullptr || !listener->is_inside_tree()) {
 			continue;
 		}
-		if (ls->src.player->get_global_position().distance_to(listener->get_global_position()) > ls->cfg.max_refl_dist) {
+		if (ls->src.player->get_global_position().distance_to(listener_position) > ls->cfg.max_refl_dist) {
 			continue;
 		}
 
@@ -251,7 +255,7 @@ GlobalSteamAudioState *SteamAudioServer::get_global_state(bool should_init) {
 		return &self->global_state;
 	}
 
-	if (!should_init) {
+	if (!should_init || self->init_failed) {
 		self->init_mux.unlock();
 		return nullptr;
 	}
@@ -277,6 +281,21 @@ GlobalSteamAudioState *SteamAudioServer::get_global_state(bool should_init) {
 	global_state.ambi_dec_effect = create_ambisonics_decode_effect(
 			global_state.ctx, global_state.audio_cfg, global_state.hrtf);
 
+	// Any of these can fail on a machine Steam Audio does not support, and every later call
+	// would then be made on a null handle. Give up cleanly instead, once.
+	if (global_state.ctx == nullptr || global_state.scene == nullptr || global_state.sim == nullptr ||
+			global_state.hrtf == nullptr || global_state.ambi_enc_effect == nullptr ||
+			global_state.ambi_dec_effect == nullptr) {
+		init_failed = true;
+		release_global_state();
+		num_static_meshes = 0;
+		init_mux.unlock();
+		UtilityFunctions::push_error(
+				"[godot-steam-audio] Steam Audio could not be initialized, so spatial audio is off for this "
+				"session. Sources still play through Godot's own 3D audio.");
+		return nullptr;
+	}
+
 	iplSimulatorSetScene(global_state.sim, global_state.scene);
 	iplSimulatorCommit(global_state.sim);
 
@@ -299,9 +318,9 @@ void SteamAudioServer::run_refl_sim() {
 			std::unique_lock<std::mutex> lock(this->refl_mux);
 			cv.wait(lock, [&] { return is_refl_thread_processing.load() || !is_running.load(); });
 		}
-		// if someone removed a local state, then the reflection sim might crash, so
-		// we need it to wait for another tick.
-		// XXX: what happens if a local state is removed in the middle of a sim run...?
+		// Skipping a round after the source list changed is belt and braces: the simulator's own
+		// source list is only mutated from remove_source, which parks this thread first, and this
+		// thread never touches local_states. It costs one stale frame of impulse response.
 		if (local_states_have_changed.load()) {
 			local_states_have_changed.store(false);
 			mark_refl_idle();
@@ -705,13 +724,18 @@ SteamAudioServer::~SteamAudioServer() {
 	// control, and a geometry or player destructor that runs afterwards must not call into a
 	// released scene or simulator. Every mutator checks this flag first.
 	self->is_global_state_init.store(false);
+	self->release_global_state();
+}
 
-	iplAmbisonicsDecodeEffectRelease(&self->global_state.ambi_dec_effect);
-	iplAmbisonicsEncodeEffectRelease(&self->global_state.ambi_enc_effect);
-	iplHRTFRelease(&self->global_state.hrtf);
-	iplSimulatorRelease(&self->global_state.sim);
-	iplSceneRelease(&self->global_state.scene);
-	iplContextRelease(&self->global_state.ctx);
+// Releasing a null handle is a no-op in Steam Audio, so this also serves the partial state left
+// behind by a failed initialization.
+void SteamAudioServer::release_global_state() {
+	iplAmbisonicsDecodeEffectRelease(&global_state.ambi_dec_effect);
+	iplAmbisonicsEncodeEffectRelease(&global_state.ambi_enc_effect);
+	iplHRTFRelease(&global_state.hrtf);
+	iplSimulatorRelease(&global_state.sim);
+	iplSceneRelease(&global_state.scene);
+	iplContextRelease(&global_state.ctx);
 }
 
 bool SteamAudioServer::save_scene_obj(const String &path) {

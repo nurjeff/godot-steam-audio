@@ -21,7 +21,7 @@ IPLHRTF create_hrtf(IPLContext ctx, IPLAudioSettings audio_cfg) {
 	hrtf_cfg.volume = SteamAudioConfig::hrtf_volume;
 	hrtf_cfg.normType = SteamAudioConfig::hrtf_normalization;
 
-	IPLHRTF hrtf;
+	IPLHRTF hrtf = nullptr;
 	IPLerror err = iplHRTFCreate(ctx, &audio_cfg, &hrtf_cfg, &hrtf);
 	handleErr(err);
 	return hrtf;
@@ -35,7 +35,7 @@ IPLAmbisonicsDecodeEffect create_ambisonics_decode_effect(IPLContext ctx, IPLAud
 	layout.type = IPL_SPEAKERLAYOUTTYPE_STEREO;
 	ambi_dec_cfg.speakerLayout = layout;
 
-	IPLAmbisonicsDecodeEffect ambi_dec_effect;
+	IPLAmbisonicsDecodeEffect ambi_dec_effect = nullptr;
 	IPLerror err = iplAmbisonicsDecodeEffectCreate(ctx, &audio_cfg,
 			&ambi_dec_cfg,
 			&ambi_dec_effect);
@@ -47,7 +47,7 @@ IPLAmbisonicsEncodeEffect create_ambisonics_encode_effect(IPLContext ctx, IPLAud
 	IPLAmbisonicsEncodeEffectSettings ambi_enc_cfg;
 	ambi_enc_cfg.maxOrder = SteamAudioConfig::max_ambisonics_order;
 
-	IPLAmbisonicsEncodeEffect ambi_enc_effect;
+	IPLAmbisonicsEncodeEffect ambi_enc_effect = nullptr;
 	IPLerror err = iplAmbisonicsEncodeEffectCreate(ctx, &audio_cfg, &ambi_enc_cfg, &ambi_enc_effect);
 	handleErr(err);
 	return ambi_enc_effect;
@@ -69,7 +69,7 @@ IPLSimulator create_simulator(IPLContext ctx, IPLAudioSettings audio_cfg, IPLSce
 	sim_cfg.numThreads = SteamAudioConfig::num_refl_threads;
 	sim_cfg.numVisSamples = SteamAudioConfig::path_vis_samples;
 
-	IPLSimulator sim;
+	IPLSimulator sim = nullptr;
 	IPLerror err = iplSimulatorCreate(ctx, &sim_cfg, &sim);
 	handleErr(err);
 	return sim;
@@ -109,7 +109,7 @@ IPLContext create_ctx() {
 	IPLContextSettings ctx_cfg{};
 	ctx_cfg.version = STEAMAUDIO_VERSION;
 	ctx_cfg.logCallback = log_callback;
-	IPLContext ctx;
+	IPLContext ctx = nullptr;
 	IPLerror err = iplContextCreate(&ctx_cfg, &ctx);
 	handleErr(err);
 	return ctx;
