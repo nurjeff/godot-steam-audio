@@ -182,7 +182,7 @@ void SteamAudioPlayer::init_local_state() {
 	handleErr(iplDirectEffectCreate(gs->ctx, &gs->audio_cfg, &dir_effect_cfg, &local_state.fx.direct));
 
 	IPLReflectionEffectSettings refl_effect_cfg{};
-	refl_effect_cfg.type = IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+	refl_effect_cfg.type = SteamAudioConfig::reflection_type;
 	refl_effect_cfg.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
 	refl_effect_cfg.numChannels = ambisonic_channels_from(local_state.cfg.ambisonics_order);
 	handleErr(iplReflectionEffectCreate(gs->ctx, &gs->audio_cfg, &refl_effect_cfg, &local_state.fx.refl));
@@ -396,5 +396,25 @@ void SteamAudioPlayer::set_ambisonics_on(bool p_ambisonics_on) { cfg.is_ambisoni
 
 PackedStringArray SteamAudioPlayer::_get_configuration_warnings() const {
 	PackedStringArray res;
+
+	if (count_nodes_of_class_in_scene(this, "SteamAudioConfig") == 0) {
+		res.push_back("No SteamAudioConfig in this scene. Steam Audio will not run without exactly one.");
+	}
+	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") == 0) {
+		res.push_back("No SteamAudioListener in this scene. Add one, usually under the Camera3D.");
+	}
+	if (cfg.ambisonics_order > SteamAudioConfig::max_ambisonics_order) {
+		res.push_back("Ambisonics order exceeds the maximum set in SteamAudioConfig, and will be clamped at runtime.");
+	}
+	if (cfg.occ_samples > SteamAudioConfig::max_num_occ_samples) {
+		res.push_back("Occlusion samples exceed the maximum set in SteamAudioConfig, and will be clamped at runtime.");
+	}
+	if (cfg.is_dist_attn_on && get_attenuation_model() != ATTENUATION_DISABLED) {
+		res.push_back("Steam Audio distance attenuation is on, so Godot's attenuation model is ignored and will be set to Disabled.");
+	}
+	if (get_panning_strength() > 0.0f) {
+		res.push_back("Panning strength is ignored on a SteamAudioPlayer; use the ambisonics settings instead.");
+	}
+
 	return res;
 }

@@ -8,6 +8,8 @@
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/audio_stream_playback.hpp>
 #include <godot_cpp/templates/safe_refcount.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <vector>
 
 using namespace godot;
 
@@ -41,6 +43,15 @@ private:
 	Ref<AudioStreamPlayback> stream_playback;
 
 	std::atomic<bool> is_active{false};
+
+	// Steam Audio needs exactly frameSize samples per call, Godot asks for whatever it likes.
+	std::vector<AudioFrame> pending;
+	int pending_pos = 0;
+	int pending_len = 0;
+	bool source_done = false;
+	PackedVector2Array scratch;
+
+	int process_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls, float rate_scale);
 
 protected:
 	static void _bind_methods();

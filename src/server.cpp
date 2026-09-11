@@ -129,27 +129,34 @@ void SteamAudioServer::tick() {
 
 	int num_refl_srcs = 0;
 
-	global_state.refl_ir_lock.lock();
-	for (auto ls : local_states) {
-		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree()) {
-			continue;
-		}
-		if (!ls->src.player->is_playing()) {
-			continue;
-		}
-		if (listener == nullptr || !listener->is_inside_tree()) {
-			continue;
-		}
+	// Never block the game thread on the audio thread: a frame without fresh impulse responses
+	// is better than a stall behind a convolution.
+	
+	if (global_state.refl_ir_lock.try_lock()) {
+		for (auto ls : local_states) {
+			if (ls->src.player == nullptr || !ls->src.player->is_inside_tree()) {
+				continue;
+			}
+			if (!ls->src.player->is_playing()) {
+				ls->refl_in_range.store(false);
+				continue;
+			}
+			if (listener == nullptr || !listener->is_inside_tree()) {
+				continue;
+			}
 
-		if (ls->src.player->get_global_position().distance_to(listener->get_global_position()) > ls->cfg.max_refl_dist) {
-			continue;
-		}
+			if (ls->src.player->get_global_position().distance_to(listener->get_global_position()) > ls->cfg.max_refl_dist) {
+				ls->refl_in_range.store(false);
+				continue;
+			}
 
-		IPLSimulationOutputs outputs;
-		iplSourceGetOutputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &outputs);
-		ls->refl_outputs = outputs.reflections;
+			IPLSimulationOutputs outputs;
+			iplSourceGetOutputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &outputs);
+			ls->refl_outputs = outputs.reflections;
+			ls->refl_in_range.store(true);
+		}
+		global_state.refl_ir_lock.unlock();
 	}
-	global_state.refl_ir_lock.unlock();
 
 	for (auto ls : self->local_states) {
 		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree()) {
@@ -175,6 +182,13 @@ void SteamAudioServer::tick() {
 		IPLSimulationInputs inputs{};
 		inputs.flags = IPL_SIMULATIONFLAGS_REFLECTIONS;
 		inputs.source = src_coords;
+		// Zero here means "scale the simulated reverb to nothing", which left parametric and
+		// hybrid reverb silent.
+		inputs.reverbScale[0] = 1.0f;
+		inputs.reverbScale[1] = 1.0f;
+		inputs.reverbScale[2] = 1.0f;
+		inputs.hybridReverbTransitionTime = 1.0f;
+		inputs.hybridReverbOverlapPercent = 0.25f;
 
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &inputs);
 		num_refl_srcs++;

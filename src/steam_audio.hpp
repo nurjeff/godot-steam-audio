@@ -4,14 +4,18 @@
 #include "godot_cpp/variant/transform3d.hpp"
 #include <phonon.h>
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <atomic>
 #include <shared_mutex>
 
 using namespace godot;
 
 VARIANT_ENUM_CAST(IPLAirAbsorptionModelType);
 VARIANT_ENUM_CAST(IPLTransmissionType);
+VARIANT_ENUM_CAST(IPLReflectionEffectType);
 
 class SteamAudio {
 public:
@@ -91,6 +95,7 @@ struct LocalSteamAudioState {
 	LocalSteamAudioBuffers bufs;
 	SteamAudioEffects fx;
 	SteamAudioSourceConfig cfg;
+	std::atomic<bool> refl_in_range{ false };
 	std::shared_mutex mux;
 };
 
@@ -129,6 +134,30 @@ inline void handleErr(IPLerror err) {
 			SteamAudio::log(SteamAudio::log_error, "Failed to handle external dependency in init");
 			return;
 	}
+}
+
+inline int count_nodes_of_class(Node *from, const char *cls) {
+	if (from == nullptr) {
+		return 0;
+	}
+	int found = from->get_class() == cls ? 1 : 0;
+	for (int i = 0; i < from->get_child_count(); i++) {
+		found += count_nodes_of_class(from->get_child(i), cls);
+	}
+	return found;
+}
+
+// The edited scene in the editor, the live tree at runtime.
+inline int count_nodes_of_class_in_scene(const Node *node, const char *cls) {
+	if (node == nullptr || !node->is_inside_tree()) {
+		return 0;
+	}
+	SceneTree *tree = node->get_tree();
+	if (tree == nullptr) {
+		return 0;
+	}
+	Node *root = Engine::get_singleton()->is_editor_hint() ? tree->get_edited_scene_root() : (Node *)tree->get_root();
+	return count_nodes_of_class(root, cls);
 }
 
 inline void log_callback(IPLLogLevel level, const char *message) {

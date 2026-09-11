@@ -15,6 +15,7 @@ float SteamAudioConfig::max_refl_duration = 2.0f;
 int SteamAudioConfig::max_num_refl_srcs = 8;
 int SteamAudioConfig::num_refl_threads = 2;
 IPLSceneType SteamAudioConfig::scene_type = IPL_SCENETYPE_EMBREE; // TODO: support more types
+IPLReflectionEffectType SteamAudioConfig::reflection_type = IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
 
 void SteamAudioConfig::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_global_log_level"), &SteamAudioConfig::get_global_log_level);
@@ -22,6 +23,10 @@ void SteamAudioConfig::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "global_log_level", PROPERTY_HINT_ENUM, "Debug,Info,Warning,Error"), "set_global_log_level", "get_global_log_level");
 
 	ADD_GROUP("Performance", "");
+	ClassDB::bind_method(D_METHOD("get_reflection_type"), &SteamAudioConfig::get_reflection_type);
+	ClassDB::bind_method(D_METHOD("set_reflection_type", "p_reflection_type"), &SteamAudioConfig::set_reflection_type);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "reflection_type", PROPERTY_HINT_ENUM, "Convolution,Parametric,Hybrid"), "set_reflection_type", "get_reflection_type");
+
 	ClassDB::bind_method(D_METHOD("get_scene_type"), &SteamAudioConfig::get_scene_type);
 	ClassDB::bind_method(D_METHOD("set_scene_type", "p_scene_type"), &SteamAudioConfig::set_scene_type);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "scene_type", PROPERTY_HINT_ENUM, "Default,Embree"), "set_scene_type", "get_scene_type");
@@ -61,6 +66,17 @@ void SteamAudioConfig::_bind_methods() {
 
 SteamAudioConfig::SteamAudioConfig() {}
 SteamAudioConfig::~SteamAudioConfig() {}
+
+PackedStringArray SteamAudioConfig::_get_configuration_warnings() const {
+	PackedStringArray res;
+	if (count_nodes_of_class_in_scene(this, "SteamAudioConfig") > 1) {
+		res.push_back("More than one SteamAudioConfig in this scene. Only the first to load is used.");
+	}
+	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") == 0) {
+		res.push_back("No SteamAudioListener in this scene. Add one, usually under the Camera3D.");
+	}
+	return res;
+}
 
 void SteamAudioConfig::ready_internal() {
 	if (Engine::get_singleton()->is_editor_hint()) {
@@ -109,6 +125,9 @@ void SteamAudioConfig::set_hrtf_volume(float p_hrtf_volume) { hrtf_volume = p_hr
 
 int SteamAudioConfig::get_max_ambisonics_order() { return max_ambisonics_order; }
 void SteamAudioConfig::set_max_ambisonics_order(int p_max_ambisonics_order) { max_ambisonics_order = p_max_ambisonics_order; }
+
+IPLReflectionEffectType SteamAudioConfig::get_reflection_type() { return reflection_type; }
+void SteamAudioConfig::set_reflection_type(IPLReflectionEffectType p_reflection_type) { reflection_type = p_reflection_type; }
 
 IPLSceneType SteamAudioConfig::get_scene_type() { return scene_type; }
 void SteamAudioConfig::set_scene_type(IPLSceneType p_scene_type) { scene_type = p_scene_type; }

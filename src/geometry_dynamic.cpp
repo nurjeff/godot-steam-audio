@@ -93,7 +93,12 @@ void SteamAudioDynamicGeometry::process_internal(double delta) {
 }
 
 Ref<SteamAudioMaterial> SteamAudioDynamicGeometry::get_material() { return mat; }
-void SteamAudioDynamicGeometry::set_material(Ref<SteamAudioMaterial> p_material) { mat = p_material; }
+void SteamAudioDynamicGeometry::set_material(Ref<SteamAudioMaterial> p_material) {
+	mat = p_material;
+	if (is_init.load() && !Engine::get_singleton()->is_editor_hint()) {
+		recalculate();
+	}
+}
 
 PackedStringArray SteamAudioDynamicGeometry::_get_configuration_warnings() const {
 	PackedStringArray res;

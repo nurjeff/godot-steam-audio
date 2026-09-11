@@ -145,4 +145,9 @@ PackedStringArray SteamAudioGeometry::_get_configuration_warnings() const {
 }
 
 Ref<SteamAudioMaterial> SteamAudioGeometry::get_material() { return mat; }
-void SteamAudioGeometry::set_material(Ref<SteamAudioMaterial> p_material) { mat = p_material; }
+void SteamAudioGeometry::set_material(Ref<SteamAudioMaterial> p_material) {
+	mat = p_material;
+	if (created.load() && !Engine::get_singleton()->is_editor_hint()) {
+		recalculate();
+	}
+}

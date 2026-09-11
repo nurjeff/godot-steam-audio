@@ -8,6 +8,7 @@
 #include <phonon.h>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/core/property_info.hpp>
+#include <algorithm>
 
 SteamAudioStream::SteamAudioStream() {}
 SteamAudioStream::~SteamAudioStream() {}
@@ -32,52 +33,89 @@ Ref<AudioStream> SteamAudioStream::get_stream() { return this->stream; }
 SteamAudioStreamPlayback::SteamAudioStreamPlayback() {}
 SteamAudioStreamPlayback::~SteamAudioStreamPlayback() {}
 
+static void fill_silence(AudioFrame *buffer, int32_t from, int32_t to) {
+	for (int32_t i = from; i < to; i++) {
+		buffer[i].left = 0.0f;
+		buffer[i].right = 0.0f;
+	}
+}
+
 int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int32_t frames) {
-	if (parent == nullptr) {
-		return frames;
-	}
-
-	if (stream_playback.is_null()) {
-		return frames;
-	}
-
-	if (Engine::get_singleton()->is_editor_hint()) {
+	if (parent == nullptr || stream_playback.is_null() || Engine::get_singleton()->is_editor_hint()) {
+		fill_silence(buffer, 0, frames);
 		return frames;
 	}
 
 	auto gs = SteamAudioServer::get_singleton()->get_global_state(false);
 	if (gs == nullptr) {
+		fill_silence(buffer, 0, frames);
 		return frames;
 	}
 
-	SteamAudio::log(SteamAudio::log_debug, "mixing");
-
 	LocalSteamAudioState *ls = parent->get_local_state();
 	if (ls == nullptr) { // probably being destroyed
+		fill_silence(buffer, 0, frames);
 		return frames;
 	}
 	std::unique_lock lock(ls->mux);
 
-	// Some extra checks because at this point parent may have been deleted
-	if (parent == nullptr) {
-		return frames;
-	}
-	ls = parent->get_local_state();
-	if (ls == nullptr || !ls->src.player) {
+	// parent may have been deleted while we waited for the lock
+	if (parent == nullptr || (ls = parent->get_local_state()) == nullptr || !ls->src.player) {
+		fill_silence(buffer, 0, frames);
 		return frames;
 	}
 
-	PackedVector2Array mixed_frames = stream_playback->mix_audio(rate_scale, frames);
-	frames = int(mixed_frames.size());
-
-	auto gs_local = SteamAudioServer::get_singleton()->get_global_state(false);
-	if (gs_local != nullptr && frames > gs_local->audio_cfg.frameSize) {
-		frames = gs_local->audio_cfg.frameSize;
+	int32_t written = 0;
+	while (written < frames) {
+		if (pending_pos >= pending_len) {
+			pending_len = process_block(gs, ls, rate_scale);
+			pending_pos = 0;
+			if (pending_len <= 0) {
+				break;
+			}
+		}
+		int32_t take = std::min(frames - written, pending_len - pending_pos);
+		for (int32_t i = 0; i < take; i++) {
+			buffer[written + i] = pending[pending_pos + i];
+		}
+		written += take;
+		pending_pos += take;
 	}
 
-	for (int i = 0; i < frames; i++) {
-		ls->bufs.in.data[0][i] = mixed_frames[i].x;
-		ls->bufs.in.data[1][i] = mixed_frames[i].y;
+	fill_silence(buffer, written, frames);
+	return written > 0 ? written : 0;
+}
+
+// Runs one fixed-size Steam Audio block. Returns how many frames of it are valid.
+int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls, float rate_scale) {
+	if (source_done) {
+		return 0;
+	}
+
+	const int block = gs->audio_cfg.frameSize;
+	if (int(pending.size()) < block) {
+		pending.resize(block);
+	}
+
+	scratch = stream_playback->mix_audio(rate_scale, block);
+	int available = std::min(int(scratch.size()), block);
+	if (available <= 0) {
+		source_done = true;
+		return 0;
+	}
+	if (available < block) {
+		source_done = true;
+	}
+
+	const Vector2 *src = scratch.ptr();
+	for (int i = 0; i < available; i++) {
+		ls->bufs.in.data[0][i] = src[i].x;
+		ls->bufs.in.data[1][i] = src[i].y;
+	}
+	// The effects always consume a full block; never let them see the previous one's tail.
+	for (int i = available; i < block; i++) {
+		ls->bufs.in.data[0][i] = 0.0f;
+		ls->bufs.in.data[1][i] = 0.0f;
 	}
 
 	if (ls->cfg.is_air_absorp_on) {
@@ -135,16 +173,19 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 		iplAmbisonicsDecodeEffectApply(
 				ls->fx.dec, &dec_params,
 				&ls->bufs.ambi, &ls->bufs.out);
-		SteamAudio::log(SteamAudio::log_debug, "mixing: finished ambisonics");
 	} else {
 		iplAudioBufferMix(gs->ctx, &ls->bufs.direct, &ls->bufs.out);
 	}
 
+	// Parametric reverb carries decay times rather than an impulse response. Out of reflection
+	// range the simulator stops updating this source, so reusing its last result would both cost
+	// CPU and freeze the reverb in place.
+	const bool needs_ir = SteamAudioConfig::reflection_type != IPL_REFLECTIONEFFECTTYPE_PARAMETRIC;
 	gs->refl_ir_lock.lock();
-	if (ls->refl_outputs.ir != nullptr && ls->cfg.is_reflection_on) {
+	if (ls->cfg.is_reflection_on && ls->refl_in_range.load() && (!needs_ir || ls->refl_outputs.ir != nullptr)) {
 		iplAudioBufferDownmix(gs->ctx, &ls->bufs.in, &ls->bufs.mono);
 		ls->refl_outputs.numChannels = ambisonic_channels_from(ls->cfg.ambisonics_order);
-		ls->refl_outputs.type = IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+		ls->refl_outputs.type = SteamAudioConfig::reflection_type;
 		ls->refl_outputs.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
 		iplReflectionEffectApply(ls->fx.refl, &ls->refl_outputs, &ls->bufs.mono, &ls->bufs.refl_ambi, nullptr);
 
@@ -152,18 +193,15 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 				ls->fx.refl_dec, &dec_params,
 				&ls->bufs.refl_ambi, &ls->bufs.refl_out);
 
-		SteamAudio::log(SteamAudio::log_debug, "mixing: mixing reflection and direct buffers");
 		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
 	}
 	gs->refl_ir_lock.unlock();
 
-	for (int i = 0; i < frames; i++) {
-		buffer[i].left = ls->bufs.out.data[0][i];
-		buffer[i].right = ls->bufs.out.data[1][i];
+	for (int i = 0; i < block; i++) {
+		pending[i].left = ls->bufs.out.data[0][i];
+		pending[i].right = ls->bufs.out.data[1][i];
 	}
-
-	SteamAudio::log(SteamAudio::log_debug, "mixing: done");
-	return frames;
+	return block;
 }
 
 void SteamAudioStreamPlayback::_bind_methods() {
@@ -178,6 +216,9 @@ int SteamAudioStreamPlayback::play_stream(const Ref<AudioStream> &p_stream, floa
 	stream = p_stream;
 	stream_playback = stream->instantiate_playback();
 	stream_playback->start(p_from_offset);
+	pending_pos = 0;
+	pending_len = 0;
+	source_done = false;
 
 	return 0;
 }

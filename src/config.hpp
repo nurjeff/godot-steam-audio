@@ -5,6 +5,7 @@
 #include "godot_cpp/classes/wrapped.hpp"
 #include "phonon.h"
 #include "steam_audio.hpp"
+#include <godot_cpp/variant/packed_string_array.hpp>
 
 using namespace godot;
 
@@ -34,10 +35,13 @@ public:
 	static int max_num_refl_srcs;
 	static int num_refl_threads;
 	static IPLSceneType scene_type;
+	static IPLReflectionEffectType reflection_type;
 
 	SteamAudioConfig();
 	~SteamAudioConfig();
 	void _notification(int p_what);
+
+	PackedStringArray _get_configuration_warnings() const override;
 
 	SteamAudio::GodotSteamAudioLogLevel get_global_log_level();
 	void set_global_log_level(SteamAudio::GodotSteamAudioLogLevel p_global_log_level);
@@ -48,6 +52,8 @@ public:
 	void set_max_ambisonics_order(int p_max_ambisonics_order);
 	IPLSceneType get_scene_type();
 	void set_scene_type(IPLSceneType p_scene_type);
+	IPLReflectionEffectType get_reflection_type();
+	void set_reflection_type(IPLReflectionEffectType p_reflection_type);
 	int get_num_refl_threads();
 	void set_num_refl_threads(int p_num_refl_threads);
 	int get_max_num_refl_srcs();

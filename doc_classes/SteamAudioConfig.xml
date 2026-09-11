@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <class name="SteamAudioConfig" inherits="Node3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
 	<brief_description>
+		Global Steam Audio settings. Exactly one is required, and it must exist before any geometry.
 	</brief_description>
 	<description>
 		This node makes [SteamAudioServer] tick. You must have one, and only one, instance of it in your scene if you'd like the extension to do anything.
@@ -8,6 +9,9 @@
 	<tutorials>
 	</tutorials>
 	<members>
+		<member name="reflection_type" type="int" setter="set_reflection_type" getter="get_reflection_type" enum="SteamAudioConfig.ReflectionType" default="0">
+			How reflections are rendered. [code]Convolution[/code] is the most detailed and the most expensive. [code]Parametric[/code] approximates the decay instead of rendering individual echoes, and is much cheaper. [code]Hybrid[/code] renders the early part with convolution and estimates the tail. Read once, when Steam Audio initializes.
+		</member>
 		<member name="diffuse_samples" type="int" setter="set_num_diffuse_samples" getter="get_num_diffuse_samples" default="32">
 			See [url=https://valvesoftware.github.io/steam-audio/doc/capi/simulation.html#_CPPv4N21IPLSimulationSettings17numDiffuseSamplesE]IPLSimulationSettings.numDiffuseSamples[/url]
 		</member>
