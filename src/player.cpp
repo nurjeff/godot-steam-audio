@@ -6,6 +6,7 @@
 #include "server.hpp"
 #include "server_init.hpp"
 #include "steam_audio.hpp"
+#include <algorithm>
 #include "stream.hpp"
 
 void SteamAudioPlayer::_bind_methods() {
@@ -184,7 +185,7 @@ void SteamAudioPlayer::init_local_state() {
 	IPLReflectionEffectSettings refl_effect_cfg{};
 	refl_effect_cfg.type = SteamAudioConfig::reflection_type;
 	refl_effect_cfg.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
-	refl_effect_cfg.numChannels = ambisonic_channels_from(local_state.cfg.ambisonics_order);
+	refl_effect_cfg.numChannels = ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order);
 	handleErr(iplReflectionEffectCreate(gs->ctx, &gs->audio_cfg, &refl_effect_cfg, &local_state.fx.refl));
 
 	local_state.fx.dec = create_ambisonics_decode_effect(
@@ -196,10 +197,10 @@ void SteamAudioPlayer::init_local_state() {
 
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.in));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.direct));
-	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(local_state.cfg.ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.ambi));
+	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.ambi));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.out));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 1, gs->audio_cfg.frameSize, &local_state.bufs.mono));
-	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(local_state.cfg.ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.refl_ambi));
+	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.refl_ambi));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.refl_out));
 	local_state.src.player = this;
 
@@ -233,6 +234,9 @@ void SteamAudioPlayer::ready_internal() {
 	if (cfg.is_dist_attn_on) {
 		set_attenuation_model(ATTENUATION_DISABLED);
 	}
+	// Godot dampens 3D audio above 5 kHz by default, which sits on top of everything Steam
+	// Audio renders and just sounds muffled. Air absorption is Steam Audio's job.
+	set_attenuation_filter_cutoff_hz(20500.0f);
 
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return;
@@ -358,7 +362,10 @@ void SteamAudioPlayer::set_transmission_rays(int p_transmission_rays) { cfg.tran
 float SteamAudioPlayer::get_min_attenuation_dist() { return cfg.min_attn_dist; }
 void SteamAudioPlayer::set_min_attenuation_dist(float p_min_attenuation_dist) { cfg.min_attn_dist = p_min_attenuation_dist; cfg_dirty.store(true); }
 int SteamAudioPlayer::get_ambisonics_order() { return cfg.ambisonics_order; }
-void SteamAudioPlayer::set_ambisonics_order(int p_ambisonics_order) { cfg.ambisonics_order = p_ambisonics_order; cfg_dirty.store(true); }
+void SteamAudioPlayer::set_ambisonics_order(int p_ambisonics_order) {
+	cfg.ambisonics_order = std::min(p_ambisonics_order, SteamAudioConfig::max_ambisonics_order);
+	cfg_dirty.store(true);
+}
 float SteamAudioPlayer::get_max_reflection_dist() { return cfg.max_refl_dist; }
 void SteamAudioPlayer::set_max_reflection_dist(float p_max_reflection_dist) { cfg.max_refl_dist = p_max_reflection_dist; cfg_dirty.store(true); }
 
@@ -414,6 +421,9 @@ PackedStringArray SteamAudioPlayer::_get_configuration_warnings() const {
 	}
 	if (get_panning_strength() > 0.0f) {
 		res.push_back("Panning strength is ignored on a SteamAudioPlayer; use the ambisonics settings instead.");
+	}
+	if (get_attenuation_filter_cutoff_hz() < 20500.0f) {
+		res.push_back("Godot's attenuation filter dampens everything above its cutoff. Steam Audio models air absorption itself, so this is set to 20500 at runtime.");
 	}
 
 	return res;
