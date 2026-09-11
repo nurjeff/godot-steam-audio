@@ -38,7 +38,15 @@ private:
 		IPLTransmissionType::IPL_TRANSMISSIONTYPE_FREQDEPENDENT,
 		false,
 		0.0f,
-		1.0f
+		1.0f,
+		false,
+		1,
+		1.0f,
+		0.1f,
+		50.0f,
+		true,
+		false,
+		false
 	};
 
 	LocalSteamAudioState local_state;
@@ -107,6 +115,23 @@ public:
 
 	bool is_ambisonics_on();
 	void set_ambisonics_on(bool p_ambisonics_on);
+
+	bool is_pathing_on();
+	void set_pathing_on(bool p_pathing_on);
+	int get_pathing_order();
+	void set_pathing_order(int p_pathing_order);
+	bool is_path_validation_on();
+	void set_path_validation_on(bool p_on);
+	bool is_path_alternate_routes_on();
+	void set_path_alternate_routes_on(bool p_on);
+	float get_path_vis_radius();
+	void set_path_vis_radius(float p_v);
+	float get_path_vis_threshold();
+	void set_path_vis_threshold(float p_v);
+	float get_path_vis_range();
+	void set_path_vis_range(float p_v);
+	bool is_baked_reverb_on();
+	void set_baked_reverb_on(bool p_on);
 
 	void play_stream(const Ref<AudioStream> &p_stream, float p_from_offset, float p_volume_db, float p_pitch_scale);
 	Ref<AudioStream> get_inner_stream();

@@ -37,6 +37,7 @@ public:
 	static int num_refl_threads;
 	static IPLSceneType scene_type;
 	static IPLReflectionEffectType reflection_type;
+	static int path_vis_samples;
 
 	SteamAudioConfig();
 	~SteamAudioConfig();
@@ -69,6 +70,8 @@ public:
 	void set_max_num_refl_rays(int p_max_num_refl_rays);
 	int get_max_num_occ_samples();
 	void set_max_num_occ_samples(int p_max_num_occ_samples);
+	int get_path_vis_samples();
+	void set_path_vis_samples(int p_path_vis_samples);
 };
 
 #endif // STEAM_AUDIO_CONFIG_H

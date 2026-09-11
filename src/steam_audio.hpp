@@ -68,6 +68,14 @@ struct SteamAudioSourceConfig {
 	bool is_directivity_on;
 	float dipole_weight;
 	float dipole_power;
+	bool is_pathing_on;
+	int pathing_order;
+	float path_vis_radius;
+	float path_vis_threshold;
+	float path_vis_range;
+	bool path_validation;
+	bool path_alternate_routes;
+	bool is_baked_reverb_on;
 };
 
 struct SteamAudioEffects {
@@ -76,6 +84,8 @@ struct SteamAudioEffects {
 	IPLAmbisonicsDecodeEffect dec;
 	IPLAmbisonicsDecodeEffect refl_dec;
 	IPLAmbisonicsEncodeEffect enc;
+	IPLPathEffect path;
+	IPLAmbisonicsDecodeEffect path_dec;
 };
 
 struct LocalSteamAudioBuffers {
@@ -84,6 +94,8 @@ struct LocalSteamAudioBuffers {
 	IPLAudioBuffer mono;
 	IPLAudioBuffer refl_ambi;
 	IPLAudioBuffer refl_out;
+	IPLAudioBuffer path_ambi;
+	IPLAudioBuffer path_out;
 	IPLAudioBuffer ambi;
 	IPLAudioBuffer out;
 };
@@ -98,6 +110,12 @@ struct LocalSteamAudioState {
 	SteamAudioSourceConfig cfg;
 	std::atomic<bool> refl_in_range{ false };
 	std::shared_mutex mux;
+	// Pathing coefficients are owned by the simulator and rewritten every tick, so the game
+	// thread copies them here instead of handing the audio thread a pointer into that memory.
+	IPLPathEffectParams path_outputs{};
+	std::vector<float> path_sh;
+	std::atomic<bool> path_active{ false };
+	std::mutex path_mux;
 };
 
 inline int ambisonic_channels_from(int order) {
@@ -119,6 +137,22 @@ inline IPLCoordinateSpace3 ipl_coords_from(const Transform3D &trf) {
 	coords.ahead = ipl_vec3_from(fwd);
 
 	return coords;
+}
+
+// Steam Audio reads IPLMatrix4x4 transposed and multiplies column vectors, so the basis
+// vectors go across the rows and the translation into the last column. Geometry keeps Godot's
+// axes: only orientations are converted, and that is what ipl_coords_from is for.
+inline IPLMatrix4x4 ipl_matrix_from(const Transform3D &trf) {
+	Vector3 x = trf.basis.get_column(0);
+	Vector3 y = trf.basis.get_column(1);
+	Vector3 z = trf.basis.get_column(2);
+	Vector3 o = trf.origin;
+	return IPLMatrix4x4{ {
+			{ x.x, y.x, z.x, o.x },
+			{ x.y, y.y, z.y, o.y },
+			{ x.z, y.z, z.z, o.z },
+			{ 0.0f, 0.0f, 0.0f, 1.0f },
+	} };
 }
 
 inline void handleErr(IPLerror err) {

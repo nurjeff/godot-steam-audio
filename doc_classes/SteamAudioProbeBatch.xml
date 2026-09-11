@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SteamAudioProbeBatch" inherits="Node3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
+	<brief_description>
+		A box volume filled with sound probes, holding the baked data that pathing and baked reverb read at run time.
+	</brief_description>
+	<description>
+		Probes are placed on the floors inside the volume, [member spacing] metres apart and [member height] above the surface, so the volume has to cover acoustic geometry to produce anything.
+		Baking traces the whole scene and blocks while it runs. Bake once, save the result with [member data_path] and [member save_after_bake], and ship the file: on later runs the batch loads it instead of baking again.
+		Baked data describes static geometry. Doors and other moving objects are handled at run time by [member SteamAudioPlayer.pathing_validation], so bake with them out of the way.
+		One batch per level is the usual setup; sources use the first one that is registered.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="bake">
+			<return type="bool" />
+			<description>
+				Generates probes inside the volume and bakes whatever is enabled, replacing any data the batch already holds. Blocks until it is done.
+			</description>
+		</method>
+		<method name="get_probe_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				How many probes the batch holds. Zero after a bake means the volume found no floors.
+			</description>
+		</method>
+		<method name="is_built" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Whether the batch has probe data, whether baked or loaded.
+			</description>
+		</method>
+		<method name="load_data">
+			<return type="bool" />
+			<param index="0" name="path" type="String" />
+			<description>
+				Replaces the batch with data saved earlier by [method save_data].
+			</description>
+		</method>
+		<method name="save_data">
+			<return type="bool" />
+			<param index="0" name="path" type="String" />
+			<description>
+				Writes the baked probes and their data so a later run can load them instead of baking.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="bake_threads" type="int" setter="set_bake_threads" getter="get_bake_threads" default="0">
+			Threads to bake with. Zero uses half the processors.
+		</member>
+		<member name="data_path" type="String" setter="set_data_path" getter="get_data_path" default="&quot;&quot;">
+			Where the baked data lives. If the file exists it is loaded instead of baking; otherwise, with [member save_after_bake] on, the bake is written here.
+		</member>
+		<member name="height" type="float" setter="set_height" getter="get_height" default="1.5">
+			How far above the floor probes are placed, roughly ear height.
+		</member>
+		<member name="path_bake" type="bool" setter="set_bake_pathing" getter="is_bake_pathing" default="true">
+			Bake the shortest sound paths between every pair of probes, which is what [member SteamAudioPlayer.pathing] plays back.
+		</member>
+		<member name="path_radius" type="float" setter="set_path_radius" getter="get_path_radius" default="1.0">
+			Probes are treated as spheres of this radius when testing whether they can see each other.
+		</member>
+		<member name="path_range" type="float" setter="set_path_range" getter="get_path_range" default="1000.0">
+			Probe pairs further apart than this along the path have no path between them. Larger values let sound travel further, at the cost of bake time and memory.
+		</member>
+		<member name="path_samples" type="int" setter="set_path_samples" getter="get_path_samples" default="1">
+			Point samples per probe when testing visibility. The bake traces this squared rays per probe pair.
+		</member>
+		<member name="path_threshold" type="float" setter="set_path_threshold" getter="get_path_threshold" default="0.1">
+			The fraction of rays that must get through for two probes to count as mutually visible.
+		</member>
+		<member name="path_visibility_range" type="float" setter="set_path_visibility_range" getter="get_path_visibility_range" default="50.0">
+			Probes further apart than this are never considered mutually visible.
+		</member>
+		<member name="prepare_on_ready" type="bool" setter="set_prepare_on_ready" getter="is_prepare_on_ready" default="true">
+			Load or bake as soon as the node enters the tree. Turn it off to control the timing yourself with [method bake] or [method load_data].
+		</member>
+		<member name="reverb_ambisonics_order" type="int" setter="set_reflection_order" getter="get_reflection_order" default="1">
+			Ambisonic order of the baked impulse responses.
+		</member>
+		<member name="reverb_bake" type="bool" setter="set_bake_reverb" getter="is_bake_reverb" default="false">
+			Bake reverb at every probe, which [member SteamAudioPlayer.baked_reverb] plays back instead of simulating reflections in real time.
+		</member>
+		<member name="reverb_bounces" type="int" setter="set_reflection_bounces" getter="get_reflection_bounces" default="16">
+			How many times each ray reflects off geometry while baking.
+		</member>
+		<member name="reverb_diffuse_samples" type="int" setter="set_reflection_diffuse_samples" getter="get_reflection_diffuse_samples" default="1024">
+			Directions considered when generating diffusely reflected rays.
+		</member>
+		<member name="reverb_duration" type="float" setter="set_reflection_duration" getter="get_reflection_duration" default="2.0">
+			Length of the baked impulse responses, in seconds.
+		</member>
+		<member name="reverb_irradiance_min_distance" type="float" setter="set_irradiance_min_distance" getter="get_irradiance_min_distance" default="1.0">
+			Sources closer than this to a surface are treated as being this far away, for energy purposes.
+		</member>
+		<member name="reverb_rays" type="int" setter="set_reflection_rays" getter="get_reflection_rays" default="16384">
+			Rays traced from each probe while baking reverb.
+		</member>
+		<member name="save_after_bake" type="bool" setter="set_save_after_bake" getter="is_save_after_bake" default="false">
+			Write the bake to [member data_path] when it finishes.
+		</member>
+		<member name="size" type="Vector3" setter="set_size" getter="get_size" default="Vector3(30, 10, 30)">
+			The box, in metres, centred on this node and turned by its rotation.
+		</member>
+		<member name="spacing" type="float" setter="set_spacing" getter="get_spacing" default="3.0">
+			Distance between neighbouring probes. Halving it roughly quadruples both the probe count and the bake time.
+		</member>
+	</members>
+	<signals>
+		<signal name="baked">
+			<param index="0" name="probe_count" type="int" />
+			<description>
+				Emitted when a bake finishes.
+			</description>
+		</signal>
+	</signals>
+</class>

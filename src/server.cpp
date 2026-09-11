@@ -9,6 +9,7 @@
 #include "phonon.h"
 #include "config.hpp"
 #include "player.hpp"
+#include "probes.hpp"
 #include "server_init.hpp"
 #include "steam_audio.hpp"
 #include <algorithm>
@@ -33,6 +34,7 @@ void SteamAudioServer::tick() {
 	// thread, so observing it idle here means it stays idle for the rest of the window.
 	if (!self->is_refl_thread_processing.load()) {
 		self->flush_scene_changes();
+		self->flush_probe_batches();
 	}
 
 	SteamAudio::log(SteamAudio::log_debug, "tick: committed scene");
@@ -124,6 +126,8 @@ void SteamAudioServer::tick() {
 		ls->direct_outputs = outputs.direct;
 	}
 
+	self->run_pathing();
+
 	if (is_refl_thread_processing.load()) {
 		SteamAudio::log(SteamAudio::log_debug, "tick: done, skipping reflections");
 		return;
@@ -191,6 +195,11 @@ void SteamAudioServer::tick() {
 		inputs.reverbScale[2] = 1.0f;
 		inputs.hybridReverbTransitionTime = 1.0f;
 		inputs.hybridReverbOverlapPercent = 0.25f;
+		if (ls->cfg.is_baked_reverb_on && get_pathing_probes() != nullptr) {
+			inputs.baked = IPL_TRUE;
+			inputs.bakedDataIdentifier.type = IPL_BAKEDDATATYPE_REFLECTIONS;
+			inputs.bakedDataIdentifier.variation = IPL_BAKEDDATAVARIATION_REVERB;
+		}
 
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &inputs);
 		num_refl_srcs++;
@@ -257,6 +266,7 @@ GlobalSteamAudioState *SteamAudioServer::get_global_state(bool should_init) {
 	handleErr(err);
 	for (auto m : static_meshes_to_add) {
 		iplStaticMeshAdd(m, global_state.scene);
+		num_static_meshes++;
 	}
 
 	global_state.sim = create_simulator(
@@ -354,6 +364,157 @@ void SteamAudioServer::flush_scene_changes() {
 	}
 }
 
+// Probe batches enter the simulator here, inside tick()'s window, because both the bake and
+// iplSimulatorAddProbeBatch touch state the reflection thread is otherwise using.
+void SteamAudioServer::flush_probe_batches() {
+	std::vector<SteamAudioProbeBatch *> pending;
+	{
+		std::lock_guard<std::mutex> lock(scene_mux);
+		pending.swap(pending_probe_batches);
+	}
+	if (pending.empty()) {
+		return;
+	}
+	for (SteamAudioProbeBatch *pb : pending) {
+		if (!pb->build() || pb->get_batch() == nullptr) {
+			continue;
+		}
+		iplSimulatorAddProbeBatch(global_state.sim, pb->get_batch());
+		pb->mark_registered(true);
+		probe_batches.push_back(pb);
+	}
+	iplSimulatorCommit(global_state.sim);
+}
+
+void SteamAudioServer::add_probe_batch(SteamAudioProbeBatch *batch) {
+	std::lock_guard<std::mutex> lock(scene_mux);
+	pending_probe_batches.push_back(batch);
+}
+
+void SteamAudioServer::remove_probe_batch(SteamAudioProbeBatch *batch) {
+	{
+		std::lock_guard<std::mutex> lock(scene_mux);
+		auto pending = std::find(pending_probe_batches.begin(), pending_probe_batches.end(), batch);
+		if (pending != pending_probe_batches.end()) {
+			pending_probe_batches.erase(pending);
+		}
+	}
+	auto found = std::find(probe_batches.begin(), probe_batches.end(), batch);
+	if (found == probe_batches.end()) {
+		return;
+	}
+	probe_batches.erase(found);
+	if (!is_global_state_init.load()) {
+		return;
+	}
+	// Sources still pointing at this batch would path through freed probes.
+	for (auto ls : local_states) {
+		ls->path_active.store(false);
+	}
+	wait_for_refl_idle();
+	iplSimulatorRemoveProbeBatch(global_state.sim, batch->get_batch());
+	batch->mark_registered(false);
+	sim_needs_commit.store(true);
+}
+
+bool SteamAudioServer::rebuild_probe_batch(SteamAudioProbeBatch *batch, const String &path) {
+	if (!self->is_global_state_init.load()) {
+		return batch->rebuild(path);
+	}
+	std::lock_guard<std::mutex> tick_lock(self->tick_mux);
+	self->wait_for_refl_idle();
+	self->flush_scene_changes();
+
+	bool was_registered = std::find(self->probe_batches.begin(), self->probe_batches.end(), batch) != self->probe_batches.end();
+	if (was_registered && batch->get_batch() != nullptr) {
+		for (auto ls : self->local_states) {
+			ls->path_active.store(false);
+		}
+		iplSimulatorRemoveProbeBatch(self->global_state.sim, batch->get_batch());
+	}
+	bool ok = batch->rebuild(path);
+	if (was_registered) {
+		if (ok && batch->get_batch() != nullptr) {
+			iplSimulatorAddProbeBatch(self->global_state.sim, batch->get_batch());
+		} else {
+			self->probe_batches.erase(std::find(self->probe_batches.begin(), self->probe_batches.end(), batch));
+		}
+		iplSimulatorCommit(self->global_state.sim);
+	}
+	return ok;
+}
+
+IPLProbeBatch SteamAudioServer::get_pathing_probes() const {
+	if (probe_batches.empty()) {
+		return nullptr;
+	}
+	return probe_batches.front()->get_batch();
+}
+
+// Pathing traces against the scene, so it runs here rather than on the reflection thread: the
+// caller has already parked that thread and committed everything.
+void SteamAudioServer::run_pathing() {
+	IPLProbeBatch probes = get_pathing_probes();
+	if (probes == nullptr) {
+		return;
+	}
+
+	int num_path_srcs = 0;
+	for (auto ls : local_states) {
+		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree() || !ls->src.player->is_playing()) {
+			ls->path_active.store(false);
+			continue;
+		}
+		if (!ls->cfg.is_pathing_on) {
+			ls->path_active.store(false);
+			continue;
+		}
+
+		IPLSimulationInputs inputs{};
+		inputs.flags = IPL_SIMULATIONFLAGS_PATHING;
+		inputs.source = ipl_coords_from(ls->src.player->get_global_transform());
+		inputs.pathingProbes = probes;
+		inputs.visRadius = ls->cfg.path_vis_radius;
+		inputs.visThreshold = ls->cfg.path_vis_threshold;
+		inputs.visRange = ls->cfg.path_vis_range;
+		inputs.pathingOrder = ls->cfg.pathing_order;
+		inputs.enableValidation = ls->cfg.path_validation ? IPL_TRUE : IPL_FALSE;
+		inputs.findAlternatePaths = ls->cfg.path_alternate_routes ? IPL_TRUE : IPL_FALSE;
+		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_PATHING, &inputs);
+		num_path_srcs++;
+	}
+	if (num_path_srcs == 0) {
+		return;
+	}
+
+	IPLSimulationSharedInputs shared{};
+	shared.listener = global_state.listener_coords;
+	iplSimulatorSetSharedInputs(global_state.sim, IPL_SIMULATIONFLAGS_PATHING, &shared);
+	iplSimulatorRunPathing(global_state.sim);
+
+	for (auto ls : local_states) {
+		if (!ls->cfg.is_pathing_on || ls->src.player == nullptr || !ls->src.player->is_inside_tree()) {
+			continue;
+		}
+		if (!ls->src.player->is_playing()) {
+			continue;
+		}
+		IPLSimulationOutputs outputs{};
+		iplSourceGetOutputs(ls->src.src, IPL_SIMULATIONFLAGS_PATHING, &outputs);
+		std::lock_guard<std::mutex> lock(ls->path_mux);
+		int channels = std::min(ambisonic_channels_from(ls->cfg.pathing_order), int(ls->path_sh.size()));
+		for (int i = 0; i < IPL_NUM_BANDS; i++) {
+			ls->path_outputs.eqCoeffs[i] = outputs.pathing.eqCoeffs[i];
+		}
+		if (outputs.pathing.shCoeffs != nullptr) {
+			for (int i = 0; i < channels; i++) {
+				ls->path_sh[i] = outputs.pathing.shCoeffs[i];
+			}
+		}
+		ls->path_active.store(outputs.pathing.shCoeffs != nullptr);
+	}
+}
+
 void SteamAudioServer::add_listener(SteamAudioListener *lis) {
 	std::lock_guard<std::mutex> lock(self->tick_mux);
 	self->listener = lis;
@@ -381,6 +542,7 @@ void SteamAudioServer::add_static_mesh(IPLStaticMesh mesh) {
 	}
 	wait_for_refl_idle();
 	iplStaticMeshAdd(mesh, global_state.scene);
+	num_static_meshes++;
 	scene_needs_commit.store(true);
 }
 
@@ -396,6 +558,7 @@ void SteamAudioServer::remove_static_mesh(IPLStaticMesh mesh) {
 	// simulation. Unloading a level used to crash the process here.
 	wait_for_refl_idle();
 	iplStaticMeshRemove(mesh, global_state.scene);
+	num_static_meshes--;
 	scene_needs_commit.store(true);
 }
 

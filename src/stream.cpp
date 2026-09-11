@@ -181,9 +181,37 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 	// range the simulator stops updating this source, so reusing its last result would both cost
 	// CPU and freeze the reverb in place.
 	const bool needs_ir = SteamAudioConfig::reflection_type != IPL_REFLECTIONEFFECTTYPE_PARAMETRIC;
-	gs->refl_ir_lock.lock();
-	if (ls->cfg.is_reflection_on && ls->refl_in_range.load() && (!needs_ir || ls->refl_outputs.ir != nullptr)) {
+	const bool wants_paths = ls->cfg.is_pathing_on && ls->path_active.load();
+	const bool wants_refl = ls->cfg.is_reflection_on && ls->refl_in_range.load();
+	if (wants_paths || wants_refl) {
 		iplAudioBufferDownmix(gs->ctx, &ls->bufs.in, &ls->bufs.mono);
+	}
+
+	if (wants_paths) {
+		// Copied off the shared vector so the simulation thread can keep writing into it.
+		float sh[ambisonic_channels_from(4)] = {};
+		IPLPathEffectParams path_params{};
+		{
+			std::lock_guard<std::mutex> lock(ls->path_mux);
+			for (int i = 0; i < IPL_NUM_BANDS; i++) {
+				path_params.eqCoeffs[i] = ls->path_outputs.eqCoeffs[i];
+			}
+			int copied = std::min(int(ls->path_sh.size()), int(sizeof(sh) / sizeof(sh[0])));
+			for (int i = 0; i < copied; i++) {
+				sh[i] = ls->path_sh[i];
+			}
+		}
+		path_params.shCoeffs = sh;
+		path_params.order = ls->cfg.pathing_order;
+		path_params.binaural = IPL_FALSE;
+		path_params.normalizeEQ = IPL_TRUE;
+		iplPathEffectApply(ls->fx.path, &path_params, &ls->bufs.mono, &ls->bufs.path_ambi);
+		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
+	}
+
+	gs->refl_ir_lock.lock();
+	if (wants_refl && (!needs_ir || ls->refl_outputs.ir != nullptr)) {
 		ls->refl_outputs.numChannels = ambisonic_channels_from(ls->cfg.ambisonics_order);
 		ls->refl_outputs.type = SteamAudioConfig::reflection_type;
 		ls->refl_outputs.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));

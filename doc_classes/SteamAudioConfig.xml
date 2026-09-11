@@ -42,8 +42,12 @@
 		<member name="reflection_threads" type="float" setter="set_num_refl_threads" getter="get_num_refl_threads" default="2.0">
             Number of threads that reflection simulation will use (see [url=https://valvesoftware.github.io/steam-audio/doc/capi/simulation.html#_CPPv4N21IPLSimulationSettings10numThreadsE]IPLSimulationSettings.numThreads[/url])
 		</member>
-		<member name="scene_type" type="int" setter="set_scene_type" getter="get_scene_type" enum="IPLSceneType" default="1">
-            The ray tracing implementation to use - see [url=https://valvesoftware.github.io/steam-audio/doc/capi/scene.html#_CPPv412IPLSceneType]IPLSceneType[/url]
+		<member name="pathing_visibility_samples" type="int" setter="set_path_vis_samples" getter="get_path_vis_samples" default="4">
+			Point samples used when re-checking probe to probe visibility at run time, for sources with [member SteamAudioPlayer.pathing_validation] on.
+		</member>
+		<member name="scene_type" type="int" setter="set_scene_type" getter="get_scene_type" enum="IPLSceneType" default="0">
+			The ray tracing implementation to use - see [url=https://valvesoftware.github.io/steam-audio/doc/capi/scene.html#_CPPv412IPLSceneType]IPLSceneType[/url].
+			Embree traces faster, but Steam Audio never detaches a released static mesh from the Embree scene and reuses its geometry id, so the first time a level is unloaded the ray tracer is left with a broken scene. Only pick it for a world that is built once and never torn down.
 		</member>
 	</members>
 </class>

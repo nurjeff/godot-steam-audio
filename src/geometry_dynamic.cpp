@@ -74,22 +74,8 @@ void SteamAudioDynamicGeometry::process_internal(double delta) {
 	last_trf = trf;
 	has_last_trf = true;
 
-	auto orig = trf.origin;
-	auto right = trf.get_basis().get_column(0);
-	auto up = trf.get_basis().get_column(1);
-	auto fwd = -trf.get_basis().get_column(2);
-
-	IPLMatrix4x4 new_trf{
-		{
-				{ right.x, right.y, right.z, orig.x },
-				{ up.x, up.y, up.z, orig.y },
-				{ fwd.x, fwd.y, fwd.z, orig.z },
-				{ 0., 0., 0., 1. },
-		}
-	};
-
 	// Queued, not applied: touching the scene here would have to wait for the ray tracer.
-	SteamAudioServer::get_singleton()->update_dynamic_mesh_transform(mesh, new_trf);
+	SteamAudioServer::get_singleton()->update_dynamic_mesh_transform(mesh, ipl_matrix_from(trf));
 }
 
 Ref<SteamAudioMaterial> SteamAudioDynamicGeometry::get_material() { return mat; }
@@ -166,15 +152,9 @@ void SteamAudioDynamicGeometry::register_geometry() {
 		return; // not inititalized yet, ret
 	}
 
-	Vector3 scale = get_transform().get_basis().get_scale();
-	IPLMatrix4x4 trf = IPLMatrix4x4{ {
-			{ scale.x, 0., 0., 0. },
-			{ 0., scale.y, 0., 0. },
-			{ 0., 0., scale.z, 0. },
-			{ 0., 0., 0., 1. },
-	} };
-
-	IPLInstancedMeshSettings mesh_cfg{ sub_scene, trf };
+	// The sub-scene holds the mesh in local space, so the instance carries the whole transform.
+	// Setting it here as well keeps the first frame from placing the mesh at the origin.
+	IPLInstancedMeshSettings mesh_cfg{ sub_scene, ipl_matrix_from(get_global_transform()) };
 	IPLerror err = iplInstancedMeshCreate(gs->scene, &mesh_cfg, &mesh);
 	handleErr(err);
 

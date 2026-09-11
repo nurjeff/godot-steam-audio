@@ -50,6 +50,22 @@ void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_ambisonics_order", "p_ambisonics_order"), &SteamAudioPlayer::set_ambisonics_order);
 	ClassDB::bind_method(D_METHOD("is_ambisonics_on"), &SteamAudioPlayer::is_ambisonics_on);
 	ClassDB::bind_method(D_METHOD("set_ambisonics_on", "p_ambisonics_on"), &SteamAudioPlayer::set_ambisonics_on);
+	ClassDB::bind_method(D_METHOD("is_pathing_on"), &SteamAudioPlayer::is_pathing_on);
+	ClassDB::bind_method(D_METHOD("set_pathing_on", "p_pathing_on"), &SteamAudioPlayer::set_pathing_on);
+	ClassDB::bind_method(D_METHOD("get_pathing_order"), &SteamAudioPlayer::get_pathing_order);
+	ClassDB::bind_method(D_METHOD("set_pathing_order", "p_pathing_order"), &SteamAudioPlayer::set_pathing_order);
+	ClassDB::bind_method(D_METHOD("is_path_validation_on"), &SteamAudioPlayer::is_path_validation_on);
+	ClassDB::bind_method(D_METHOD("set_path_validation_on", "p_on"), &SteamAudioPlayer::set_path_validation_on);
+	ClassDB::bind_method(D_METHOD("is_path_alternate_routes_on"), &SteamAudioPlayer::is_path_alternate_routes_on);
+	ClassDB::bind_method(D_METHOD("set_path_alternate_routes_on", "p_on"), &SteamAudioPlayer::set_path_alternate_routes_on);
+	ClassDB::bind_method(D_METHOD("get_path_vis_radius"), &SteamAudioPlayer::get_path_vis_radius);
+	ClassDB::bind_method(D_METHOD("set_path_vis_radius", "p_v"), &SteamAudioPlayer::set_path_vis_radius);
+	ClassDB::bind_method(D_METHOD("get_path_vis_threshold"), &SteamAudioPlayer::get_path_vis_threshold);
+	ClassDB::bind_method(D_METHOD("set_path_vis_threshold", "p_v"), &SteamAudioPlayer::set_path_vis_threshold);
+	ClassDB::bind_method(D_METHOD("get_path_vis_range"), &SteamAudioPlayer::get_path_vis_range);
+	ClassDB::bind_method(D_METHOD("set_path_vis_range", "p_v"), &SteamAudioPlayer::set_path_vis_range);
+	ClassDB::bind_method(D_METHOD("is_baked_reverb_on"), &SteamAudioPlayer::is_baked_reverb_on);
+	ClassDB::bind_method(D_METHOD("set_baked_reverb_on", "p_on"), &SteamAudioPlayer::set_baked_reverb_on);
 
 	ADD_GROUP("Distance Attenuation", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "distance_attenuation"), "set_dist_attn_on", "is_dist_attn_on");
@@ -78,6 +94,16 @@ void SteamAudioPlayer::_bind_methods() {
 	ADD_GROUP("Reflection", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "reflection"), "set_reflection_on", "is_reflection_on");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_reflection_distance", PROPERTY_HINT_RANGE, "0.0,20000.0,0.1"), "set_max_reflection_distance", "get_max_reflection_distance");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "baked_reverb"), "set_baked_reverb_on", "is_baked_reverb_on");
+
+	ADD_GROUP("Pathing", "pathing_");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing"), "set_pathing_on", "is_pathing_on");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathing_ambisonics_order", PROPERTY_HINT_RANGE, "0,3,1"), "set_pathing_order", "get_pathing_order");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing_validation"), "set_path_validation_on", "is_path_validation_on");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing_alternate_routes"), "set_path_alternate_routes_on", "is_path_alternate_routes_on");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_radius", PROPERTY_HINT_RANGE, "0.1,10.0,0.1"), "set_path_vis_radius", "get_path_vis_radius");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_threshold", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_path_vis_threshold", "get_path_vis_threshold");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pathing_visibility_range", PROPERTY_HINT_RANGE, "1.0,500.0,1.0,or_greater"), "set_path_vis_range", "get_path_vis_range");
 
 	ADD_GROUP("Directivity", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "directivity"), "set_directivity_on", "is_directivity_on");
@@ -168,7 +194,7 @@ void SteamAudioPlayer::init_local_state() {
 	local_state.cfg = cfg;
 
 	IPLSourceSettings src_cfg{};
-	src_cfg.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
+	src_cfg.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS | IPL_SIMULATIONFLAGS_PATHING);
 	// Registering a source changes the simulator, which Steam Audio forbids while a simulation
 	// is running. The server queues it and commits in its own safe window: this can run on the
 	// audio thread, which must never block on the ray tracer.
@@ -188,6 +214,13 @@ void SteamAudioPlayer::init_local_state() {
 	refl_effect_cfg.numChannels = ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order);
 	handleErr(iplReflectionEffectCreate(gs->ctx, &gs->audio_cfg, &refl_effect_cfg, &local_state.fx.refl));
 
+	IPLPathEffectSettings path_effect_cfg{};
+	path_effect_cfg.maxOrder = SteamAudioConfig::max_ambisonics_order;
+	path_effect_cfg.spatialize = IPL_FALSE;
+	handleErr(iplPathEffectCreate(gs->ctx, &gs->audio_cfg, &path_effect_cfg, &local_state.fx.path));
+	local_state.fx.path_dec = create_ambisonics_decode_effect(gs->ctx, gs->audio_cfg, gs->hrtf);
+	local_state.path_sh.assign(ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), 0.0f);
+
 	local_state.fx.dec = create_ambisonics_decode_effect(
 			gs->ctx, gs->audio_cfg, gs->hrtf);
 	local_state.fx.refl_dec = create_ambisonics_decode_effect(
@@ -202,6 +235,8 @@ void SteamAudioPlayer::init_local_state() {
 	handleErr(iplAudioBufferAllocate(gs->ctx, 1, gs->audio_cfg.frameSize, &local_state.bufs.mono));
 	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.refl_ambi));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.refl_out));
+	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.path_ambi));
+	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.path_out));
 	local_state.src.player = this;
 
 	SteamAudio::log(SteamAudio::log_debug, "init local state done");
@@ -387,6 +422,26 @@ bool SteamAudioPlayer::is_reflection_on() { return cfg.is_reflection_on; }
 void SteamAudioPlayer::set_reflection_on(bool p_reflection_on) { cfg.is_reflection_on = p_reflection_on; cfg_dirty.store(true); }
 bool SteamAudioPlayer::is_occlusion_on() { return cfg.is_occlusion_on; }
 void SteamAudioPlayer::set_occlusion_on(bool p_occlusion_on) { cfg.is_occlusion_on = p_occlusion_on; cfg_dirty.store(true); }
+
+bool SteamAudioPlayer::is_pathing_on() { return cfg.is_pathing_on; }
+void SteamAudioPlayer::set_pathing_on(bool p_pathing_on) { cfg.is_pathing_on = p_pathing_on; cfg_dirty.store(true); }
+int SteamAudioPlayer::get_pathing_order() { return cfg.pathing_order; }
+void SteamAudioPlayer::set_pathing_order(int p_pathing_order) {
+	cfg.pathing_order = std::clamp(p_pathing_order, 0, SteamAudioConfig::max_ambisonics_order);
+	cfg_dirty.store(true);
+}
+bool SteamAudioPlayer::is_path_validation_on() { return cfg.path_validation; }
+void SteamAudioPlayer::set_path_validation_on(bool p_on) { cfg.path_validation = p_on; cfg_dirty.store(true); }
+bool SteamAudioPlayer::is_path_alternate_routes_on() { return cfg.path_alternate_routes; }
+void SteamAudioPlayer::set_path_alternate_routes_on(bool p_on) { cfg.path_alternate_routes = p_on; cfg_dirty.store(true); }
+float SteamAudioPlayer::get_path_vis_radius() { return cfg.path_vis_radius; }
+void SteamAudioPlayer::set_path_vis_radius(float p_v) { cfg.path_vis_radius = p_v; cfg_dirty.store(true); }
+float SteamAudioPlayer::get_path_vis_threshold() { return cfg.path_vis_threshold; }
+void SteamAudioPlayer::set_path_vis_threshold(float p_v) { cfg.path_vis_threshold = p_v; cfg_dirty.store(true); }
+float SteamAudioPlayer::get_path_vis_range() { return cfg.path_vis_range; }
+void SteamAudioPlayer::set_path_vis_range(float p_v) { cfg.path_vis_range = p_v; cfg_dirty.store(true); }
+bool SteamAudioPlayer::is_baked_reverb_on() { return cfg.is_baked_reverb_on; }
+void SteamAudioPlayer::set_baked_reverb_on(bool p_on) { cfg.is_baked_reverb_on = p_on; cfg_dirty.store(true); }
 
 IPLTransmissionType SteamAudioPlayer::get_transmission_type() { return cfg.transmission_type; }
 void SteamAudioPlayer::set_transmission_type(IPLTransmissionType p_transmission_type) { cfg.transmission_type = p_transmission_type; cfg_dirty.store(true); }

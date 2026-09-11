@@ -15,8 +15,13 @@ int SteamAudioConfig::num_diffuse_samples = 32;
 float SteamAudioConfig::max_refl_duration = 2.0f;
 int SteamAudioConfig::max_num_refl_srcs = 8;
 int SteamAudioConfig::num_refl_threads = 2;
-IPLSceneType SteamAudioConfig::scene_type = IPL_SCENETYPE_EMBREE; // TODO: support more types
+// Embree is faster, but Steam Audio 4.8 never detaches a released static mesh from the Embree
+// scene and hands its geometry id to the next one, so the first level change leaves the ray
+// tracer with a broken scene: no reflections, no occlusion, and usually a crash. Godot games
+// change scenes, so the portable tracer is the safe default.
+IPLSceneType SteamAudioConfig::scene_type = IPL_SCENETYPE_DEFAULT;
 IPLReflectionEffectType SteamAudioConfig::reflection_type = IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+int SteamAudioConfig::path_vis_samples = 4;
 
 void SteamAudioConfig::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_global_log_level"), &SteamAudioConfig::get_global_log_level);
@@ -47,6 +52,10 @@ void SteamAudioConfig::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_max_ambisonics_order"), &SteamAudioConfig::get_max_ambisonics_order);
 	ClassDB::bind_method(D_METHOD("set_max_ambisonics_order", "p_max_ambisonics_order"), &SteamAudioConfig::set_max_ambisonics_order);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_ambisonics_order", PROPERTY_HINT_RANGE, "0,5,1"), "set_max_ambisonics_order", "get_max_ambisonics_order");
+
+	ClassDB::bind_method(D_METHOD("get_path_vis_samples"), &SteamAudioConfig::get_path_vis_samples);
+	ClassDB::bind_method(D_METHOD("set_path_vis_samples", "p_path_vis_samples"), &SteamAudioConfig::set_path_vis_samples);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pathing_visibility_samples", PROPERTY_HINT_RANGE, "1,32,1"), "set_path_vis_samples", "get_path_vis_samples");
 
 	ClassDB::bind_method(D_METHOD("get_max_num_occ_samples"), &SteamAudioConfig::get_max_num_occ_samples);
 	ClassDB::bind_method(D_METHOD("set_max_num_occ_samples", "p_max_num_occ_samples"), &SteamAudioConfig::set_max_num_occ_samples);
@@ -79,6 +88,10 @@ PackedStringArray SteamAudioConfig::_get_configuration_warnings() const {
 	}
 	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") == 0) {
 		res.push_back("No SteamAudioListener in this scene. Add one, usually under the Camera3D.");
+	}
+	if (scene_type == IPL_SCENETYPE_EMBREE) {
+		res.push_back("Embree traces faster, but Steam Audio leaves stale geometry behind when acoustic "
+					  "geometry is freed. Only use it if the acoustic scene is built once and never torn down.");
 	}
 	return res;
 }
@@ -157,3 +170,5 @@ void SteamAudioConfig::set_max_num_refl_rays(int p_max_num_refl_rays) { max_num_
 
 int SteamAudioConfig::get_max_num_occ_samples() { return max_num_occ_samples; }
 void SteamAudioConfig::set_max_num_occ_samples(int p_max_num_occ_samples) { max_num_occ_samples = p_max_num_occ_samples; }
+int SteamAudioConfig::get_path_vis_samples() { return path_vis_samples; }
+void SteamAudioConfig::set_path_vis_samples(int p_path_vis_samples) { path_vis_samples = p_path_vis_samples; }

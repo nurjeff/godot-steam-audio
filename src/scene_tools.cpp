@@ -4,6 +4,7 @@
 #include "geometry_dynamic.hpp"
 #include "listener.hpp"
 #include "player.hpp"
+#include "probes.hpp"
 #include <godot_cpp/classes/collision_shape3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -87,6 +88,8 @@ PackedStringArray SteamAudioSceneTools::validate_scene(Node *root) {
 	std::vector<SteamAudioConfig *> configs;
 	std::vector<SteamAudioListener *> listeners;
 	std::vector<SteamAudioPlayer *> players;
+	std::vector<SteamAudioProbeBatch *> probe_batches;
+	collect_class<SteamAudioProbeBatch>(root, probe_batches);
 	collect_class<SteamAudioConfig>(root, configs);
 	collect_class<SteamAudioListener>(root, listeners);
 	collect_class<SteamAudioPlayer>(root, players);
@@ -105,7 +108,16 @@ PackedStringArray SteamAudioSceneTools::validate_scene(Node *root) {
 	if (!missing.is_empty()) {
 		out.push_back(vformat("%d mesh or collision shape(s) have no acoustic geometry.", int(missing.size())));
 	}
+	if (probe_batches.size() > 1) {
+		out.push_back(vformat("%d SteamAudioProbeBatch nodes, but sources path through the first one only.", int(probe_batches.size())));
+	}
 	for (SteamAudioPlayer *player : players) {
+		if (player->is_pathing_on() && probe_batches.empty()) {
+			out.push_back(vformat("%s: pathing is on but the scene has no SteamAudioProbeBatch, so there are no paths to follow.", player->get_name()));
+		}
+		if (player->is_baked_reverb_on() && probe_batches.empty()) {
+			out.push_back(vformat("%s: baked reverb is on but the scene has no SteamAudioProbeBatch.", player->get_name()));
+		}
 		if (player->get_attenuation_filter_cutoff_hz() < 20500.0f) {
 			out.push_back(vformat("%s: Godot's attenuation filter is set to %d Hz. It is disabled at runtime, since Steam Audio models air absorption itself.",
 					player->get_name(), int(player->get_attenuation_filter_cutoff_hz())));

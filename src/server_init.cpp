@@ -55,7 +55,7 @@ IPLAmbisonicsEncodeEffect create_ambisonics_encode_effect(IPLContext ctx, IPLAud
 
 IPLSimulator create_simulator(IPLContext ctx, IPLAudioSettings audio_cfg, IPLSceneSettings scene_cfg) {
 	IPLSimulationSettings sim_cfg{};
-	sim_cfg.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
+	sim_cfg.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS | IPL_SIMULATIONFLAGS_PATHING);
 	sim_cfg.sceneType = scene_cfg.type;
 	sim_cfg.frameSize = audio_cfg.frameSize;
 	sim_cfg.samplingRate = audio_cfg.samplingRate;
@@ -67,6 +67,7 @@ IPLSimulator create_simulator(IPLContext ctx, IPLAudioSettings audio_cfg, IPLSce
 	sim_cfg.maxOrder = SteamAudioConfig::max_ambisonics_order;
 	sim_cfg.maxNumSources = SteamAudioConfig::max_num_refl_srcs;
 	sim_cfg.numThreads = SteamAudioConfig::num_refl_threads;
+	sim_cfg.numVisSamples = SteamAudioConfig::path_vis_samples;
 
 	IPLSimulator sim;
 	IPLerror err = iplSimulatorCreate(ctx, &sim_cfg, &sim);

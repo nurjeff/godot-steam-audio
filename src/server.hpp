@@ -12,6 +12,8 @@
 
 using namespace godot;
 
+class SteamAudioProbeBatch;
+
 class SteamAudioServer : public Object {
 	GDCLASS(SteamAudioServer, Object)
 
@@ -40,11 +42,17 @@ private:
 	// queued on the game thread and flushed in tick() instead of being applied immediately.
 	std::vector<std::pair<IPLInstancedMesh, IPLMatrix4x4>> pending_dynamic_transforms;
 	std::vector<IPLSource> pending_sources_to_add;
+	std::vector<SteamAudioProbeBatch *> probe_batches;
+	std::vector<SteamAudioProbeBatch *> pending_probe_batches;
+
+	void flush_probe_batches();
+	void run_pathing();
 
 	void flush_scene_changes();
 	void mark_refl_idle();
 
 	// meshes to add to the global state scene after it's initialized.
+	int num_static_meshes = 0;
 	std::vector<IPLStaticMesh> static_meshes_to_add;
 	std::vector<IPLStaticMesh> dynamic_meshes_to_add;
 
@@ -76,6 +84,13 @@ public:
 	void update_dynamic_mesh_transform(IPLInstancedMesh mesh, const IPLMatrix4x4 &transform);
 	void add_source(IPLSource source);
 	void remove_source(IPLSource source);
+	void add_probe_batch(SteamAudioProbeBatch *batch);
+	void remove_probe_batch(SteamAudioProbeBatch *batch);
+	// Bakes or loads a batch with the reflection simulation parked, then re-arms the simulator.
+	bool rebuild_probe_batch(SteamAudioProbeBatch *batch, const String &path);
+	// The batch sources use for pathing. One batch per level is the usual setup.
+	IPLProbeBatch get_pathing_probes() const;
+	int get_static_mesh_count() const { return num_static_meshes; }
 
 	// Blocks until the reflection simulation is not running. Steam Audio forbids committing
 	// scene or simulator changes concurrently with a simulation, so anything that mutates
