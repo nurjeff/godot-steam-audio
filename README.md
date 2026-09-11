@@ -2,6 +2,28 @@
 This is a GDExtension that integrates the [steam-audio](https://valvesoftware.github.io/steam-audio/) library
 into Godot 4.4. This adds sound effects such as occlusion and reverb into the engine.
 
+## About this fork
+
+A maintained fork of [stechyo/godot-steam-audio](https://github.com/stechyo/godot-steam-audio), built
+against Steam Audio 4.8.0 and godot-cpp 4.4, developed and tested on Godot 4.7.2. It exists because
+upstream cannot change its acoustic scene at run time without crashing, and because a game needs more
+than upstream exposes.
+
+Fixed here, among others: mutating acoustic geometry while the reflection simulation runs, freed
+players left in the source list, parametric and hybrid reverb scaled to silence, Godot's 5 kHz
+attenuation filter muffling every source, reverb cut off the moment a sound ended, impulse response
+dimensions taken from the wrong settings, and a failed Steam Audio start handing back uninitialised
+handles. The portable ray tracer is the default, because Steam Audio's Embree backend leaves a dead
+scene behind the first time a level is unloaded.
+
+Added here: an editor menu that tags a scene's geometry and validates the setup, an OBJ dump of the
+scene the simulation actually traces, sound pathing and baked reverb through `SteamAudioProbeBatch`,
+and reverb that rings out after a source stops. Each fix has a reproduction and a measurement in the
+consuming project's `PROBLEMS.md`.
+
+Windows and Linux x86-64 are built and exercised; Android, macOS and iOS come from CI and are
+unverified. Single listener only.
+
 This extension has been created and maintained by me (@stechyo), but due to a lack of time/interest in game
 development in the past year this is not really being maintained/developed at the rate it could be. I am, of
 course, extremely thankful to all of the people who have opened issues and PRs, starred the project or
@@ -31,13 +53,17 @@ don't have the time nor the money to support that, sorry.
  - Spatial ambisonics audio 
  - Occlusion and transmission through geometry 
  - Distance attenuation
- - Reflections (reverb)
+ - Reflections (reverb), as convolution, parametric or hybrid
  - Dynamic geometry
+ - Sound pathing: audible routes around corners, baked into probe volumes
+ - Baked reverb, as a cheaper alternative to tracing reflections every frame
+ - Reverb tails that ring out after a source stops
+ - Editor tooling: geometry tagging, scene validation, a probe volume gizmo, an OBJ scene dump
 
  To come: 
- - More editor configuration
- - Baked scenes for higher-performance reflections
- - More raycasting support
+ - Baked reflections from a static source position, not just listener reverb
+ - Multiple listeners
+ - TrueAudio Next and Radeon Rays back ends
 
 ### Getting started
 Check [Installation](https://github.com/stechyo/godot-steam-audio/wiki/Installation) for how to install the extension, [Project setup](https://github.com/stechyo/godot-steam-audio/wiki/Project-setup) for how to integrate it with your project, and [Contributing](https://github.com/stechyo/godot-steam-audio/wiki/Contributing) if you're interested in improving the extension.
