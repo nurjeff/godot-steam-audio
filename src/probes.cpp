@@ -151,18 +151,17 @@ bool SteamAudioProbeBatch::build() {
 	if (is_prepared) {
 		return batch != nullptr;
 	}
-	is_prepared = true;
-	if (!data_path.is_empty() && FileAccess::file_exists(data_path)) {
-		return load_internal(data_path);
-	}
-	return bake_internal();
+	bool ok = (!data_path.is_empty() && FileAccess::file_exists(data_path)) ? load_internal(data_path) : bake_internal();
+	is_prepared = ok;
+	return ok;
 }
 
 // Re-generating or re-loading swaps the IPLProbeBatch out from under the simulator, so it has
 // to happen where nothing is reading it. An empty path means bake.
 bool SteamAudioProbeBatch::rebuild(const String &path) {
-	is_prepared = true;
-	return path.is_empty() ? bake_internal() : load_internal(path);
+	bool ok = path.is_empty() ? bake_internal() : load_internal(path);
+	is_prepared = is_prepared || ok;
+	return ok;
 }
 
 bool SteamAudioProbeBatch::bake() {
