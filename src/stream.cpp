@@ -189,7 +189,8 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 
 	if (wants_paths) {
 		// Copied off the shared vector so the simulation thread can keep writing into it.
-		float sh[ambisonic_channels_from(4)] = {};
+		// Sized for the highest order the config allows, so the copy is never short.
+		float sh[ambisonic_channels_from(5)] = {};
 		IPLPathEffectParams path_params{};
 		{
 			std::lock_guard<std::mutex> lock(ls->path_mux);

@@ -120,7 +120,7 @@ struct LocalSteamAudioState {
 	std::mutex path_mux;
 };
 
-inline int ambisonic_channels_from(int order) {
+constexpr int ambisonic_channels_from(int order) {
 	return (order + 1) * (order + 1);
 }
 
