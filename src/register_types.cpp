@@ -25,6 +25,7 @@ SteamAudioServer *srv;
 
 void init_ext(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		ClassDB::register_internal_class<SteamAudioProbeGizmoPlugin>();
 		ClassDB::register_internal_class<SteamAudioEditorPlugin>();
 		EditorPlugins::add_by_type<SteamAudioEditorPlugin>();
 		return;

@@ -101,7 +101,7 @@
 			Write the bake to [member data_path] when it finishes.
 		</member>
 		<member name="size" type="Vector3" setter="set_size" getter="get_size" default="Vector3(30, 10, 30)">
-			The box, in metres, centred on this node and turned by its rotation.
+			The box, in metres, centred on this node and turned by its rotation. The editor draws it.
 		</member>
 		<member name="spacing" type="float" setter="set_spacing" getter="get_spacing" default="3.0">
 			Distance between neighbouring probes. Halving it roughly quadruples both the probe count and the bake time.

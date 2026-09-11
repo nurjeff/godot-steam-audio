@@ -70,7 +70,10 @@ public:
 	int get_probe_count() const { return probe_count; }
 
 	Vector3 get_size() const { return size; }
-	void set_size(Vector3 p_size) { size = p_size; }
+	void set_size(Vector3 p_size) {
+		size = p_size;
+		update_gizmos();
+	}
 	float get_spacing() const { return spacing; }
 	void set_spacing(float p_spacing) { spacing = p_spacing; }
 	float get_height() const { return height; }

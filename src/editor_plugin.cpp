@@ -1,11 +1,14 @@
 #include "editor_plugin.hpp"
 #include "geometry.hpp"
 #include "material.hpp"
+#include "probes.hpp"
 #include "scene_tools.hpp"
 #include <godot_cpp/classes/editor_interface.hpp>
+#include <godot_cpp/classes/editor_node3d_gizmo.hpp>
 #include <godot_cpp/classes/editor_selection.hpp>
 #include <godot_cpp/classes/editor_undo_redo_manager.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -17,6 +20,45 @@ enum MenuItem {
 };
 
 static const char *DEFAULT_MATERIAL = "res://addons/godot-steam-audio/materials/default_material.tres";
+
+SteamAudioProbeGizmoPlugin::SteamAudioProbeGizmoPlugin() {
+	create_material("probe_volume", Color(0.98f, 0.14f, 0.29f, 0.8f));
+}
+
+bool SteamAudioProbeGizmoPlugin::_has_gizmo(Node3D *node) const {
+	return Object::cast_to<SteamAudioProbeBatch>(node) != nullptr;
+}
+
+String SteamAudioProbeGizmoPlugin::_get_gizmo_name() const {
+	return "SteamAudioProbeBatch";
+}
+
+void SteamAudioProbeGizmoPlugin::_redraw(const Ref<EditorNode3DGizmo> &gizmo) {
+	gizmo->clear();
+	SteamAudioProbeBatch *batch = Object::cast_to<SteamAudioProbeBatch>(gizmo->get_node_3d());
+	if (batch == nullptr) {
+		return;
+	}
+	Vector3 half = batch->get_size() * 0.5f;
+	Vector3 corner[8];
+	for (int i = 0; i < 8; i++) {
+		corner[i] = Vector3(
+				(i & 1) ? half.x : -half.x,
+				(i & 2) ? half.y : -half.y,
+				(i & 4) ? half.z : -half.z);
+	}
+	static const int edges[12][2] = {
+		{ 0, 1 }, { 2, 3 }, { 4, 5 }, { 6, 7 },
+		{ 0, 2 }, { 1, 3 }, { 4, 6 }, { 5, 7 },
+		{ 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 }
+	};
+	PackedVector3Array lines;
+	for (auto &edge : edges) {
+		lines.push_back(corner[edge[0]]);
+		lines.push_back(corner[edge[1]]);
+	}
+	gizmo->add_lines(lines, get_material("probe_volume", gizmo));
+}
 
 void SteamAudioEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_menu_pressed", "id"), &SteamAudioEditorPlugin::on_menu_pressed);
@@ -31,11 +73,16 @@ void SteamAudioEditorPlugin::_enter_tree() {
 	menu->add_item("Validate Scene", MENU_VALIDATE);
 	menu->connect("id_pressed", Callable(this, "on_menu_pressed"));
 	add_tool_submenu_item("Steam Audio", menu);
+
+	gizmos.instantiate();
+	add_node_3d_gizmo_plugin(gizmos);
 }
 
 void SteamAudioEditorPlugin::_exit_tree() {
 	remove_tool_menu_item("Steam Audio");
 	menu = nullptr;
+	remove_node_3d_gizmo_plugin(gizmos);
+	gizmos.unref();
 }
 
 void SteamAudioEditorPlugin::on_menu_pressed(int p_id) {
