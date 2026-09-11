@@ -1,6 +1,8 @@
 name: build-release
 run-name: Build release
-on: [push]
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
   build-linux-windows-android:
