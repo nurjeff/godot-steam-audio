@@ -8,6 +8,24 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+		<method name="stop_ringing_out">
+			<return type="void" />
+			<description>
+				Ends the source and lets its reverb decay, instead of cutting both at once the way [method AudioStreamPlayer3D.stop] does. The player reports itself as playing until the effects have nothing left.
+			</description>
+		</method>
+		<method name="is_path_active">
+			<return type="bool" />
+			<description>
+				Whether the simulation is currently carrying this source to the listener along a path. False wherever there is line of sight, or no route at all.
+			</description>
+		</method>
+		<method name="get_path_level">
+			<return type="float" />
+			<description>
+				How much energy the current path carries, as the magnitude of its ambisonic coefficients. Zero when there is no route.
+			</description>
+		</method>
 		<method name="get_inner_stream">
 			<return type="AudioStream" />
 			<description>
@@ -57,6 +75,7 @@
 		</member>
 		<member name="baked_reverb" type="bool" setter="set_baked_reverb_on" getter="is_baked_reverb_on" default="false">
 			Take reflections from the reverb baked into a [SteamAudioProbeBatch] instead of simulating them. Much cheaper, but it does not follow moving geometry. Needs [member reflection] on and a batch baked with [member SteamAudioProbeBatch.reverb_bake].
+			Baked reverb describes the room the [i]listener[/i] is in, not the room the source is in, so it is sent in at the gain the source's direct path has: a source you cannot hear does not excite it. Expect it to sound like the space around you rather than the space around the source.
 		</member>
 		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="false">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.

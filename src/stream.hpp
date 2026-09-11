@@ -51,6 +51,7 @@ private:
 	bool source_done = false;
 	// Once the source runs out, the effects keep ringing for as long as their impulse responses
 	// last. Cutting there is what makes a sound stop dead in a cathedral.
+	std::atomic<bool> tail_requested{ false };
 	bool tail_active = false;
 	bool tail_done = false;
 	int tail_blocks = 0;
@@ -69,6 +70,9 @@ public:
 
 	void set_stream(Ref<AudioStream> p_stream);
 	Ref<AudioStreamPlayback> get_stream_playback();
+	// Stop pulling from the source but keep mixing until the effects have nothing left, so the
+	// reverb of a sound that ends rings out instead of being cut with it.
+	void begin_tail() { tail_requested.store(true); }
 
 	virtual int32_t _mix(AudioFrame *buffer, float rate_scale, int32_t frames) override;
 	int play_stream(const Ref<AudioStream> &p_stream, float p_from_offset,

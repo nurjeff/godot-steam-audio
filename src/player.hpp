@@ -136,6 +136,9 @@ public:
 	float get_path_level();
 
 	void play_stream(const Ref<AudioStream> &p_stream, float p_from_offset, float p_volume_db, float p_pitch_scale);
+	// Ends the source and lets its reverb decay. stop() cuts everything immediately, which is
+	// what Godot means by stop, but it is rarely what a reverberant sound should do.
+	void stop_ringing_out();
 	Ref<AudioStream> get_inner_stream();
 	Ref<AudioStreamPlayback> get_inner_stream_playback();
 

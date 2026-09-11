@@ -116,11 +116,23 @@ struct LocalSteamAudioState {
 	std::atomic<bool> path_active{ false };
 	// Whether the simulator still has pathing inputs for this source. Game thread only.
 	bool path_in_sim = false;
+	// Ambisonic order of the last reflection block, so its tail is decoded the same way.
+	int last_refl_order = 0;
 	std::mutex path_mux;
 };
 
 constexpr int ambisonic_channels_from(int order) {
 	return (order + 1) * (order + 1);
+}
+
+// The order an ambisonic buffer of this many channels carries. Reflections come back at the
+// order the listener asked the simulator for, which need not be the source's own setting.
+inline int ambisonic_order_from(int channels) {
+	int order = 0;
+	while (ambisonic_channels_from(order + 1) <= channels) {
+		order++;
+	}
+	return order;
 }
 
 inline IPLVector3 ipl_vec3_from(Vector3 v) { return IPLVector3{ v.x, v.y, v.z }; }

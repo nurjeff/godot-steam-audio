@@ -429,9 +429,12 @@ void SteamAudioServer::remove_probe_batch(SteamAudioProbeBatch *batch) {
 }
 
 void SteamAudioServer::set_dynamic_geometry_present(bool present) {
-	if (dynamic_meshes.empty()) {
+	// Idempotent on purpose: the callers are a bake's entry and its several exits, and adding a
+	// mesh Steam Audio already has, or removing one it does not, corrupts the scene.
+	if (present == !dynamic_geometry_hidden) {
 		return;
 	}
+	dynamic_geometry_hidden = !present;
 	for (IPLInstancedMesh mesh : dynamic_meshes) {
 		if (present) {
 			iplInstancedMeshAdd(mesh, global_state.scene);
@@ -601,8 +604,11 @@ void SteamAudioServer::add_dynamic_mesh(IPLInstancedMesh mesh) {
 		return;
 	}
 	wait_for_refl_idle();
-	iplInstancedMeshAdd(mesh, global_state.scene);
 	dynamic_meshes.push_back(mesh);
+	if (dynamic_geometry_hidden) {
+		return; // A bake is in progress; the restore will add it.
+	}
+	iplInstancedMeshAdd(mesh, global_state.scene);
 	scene_needs_commit.store(true);
 }
 
@@ -611,7 +617,9 @@ void SteamAudioServer::remove_dynamic_mesh(IPLInstancedMesh mesh) {
 		return; // We've probably already deleted the scene.
 	}
 	wait_for_refl_idle();
-	iplInstancedMeshRemove(mesh, global_state.scene);
+	if (!dynamic_geometry_hidden) {
+		iplInstancedMeshRemove(mesh, global_state.scene);
+	}
 	auto found = std::find(dynamic_meshes.begin(), dynamic_meshes.end(), mesh);
 	if (found != dynamic_meshes.end()) {
 		dynamic_meshes.erase(found);

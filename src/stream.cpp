@@ -40,6 +40,32 @@ static void fill_silence(AudioFrame *buffer, int32_t from, int32_t to) {
 	}
 }
 
+// Baked reverb is the response of the room the listener is standing in, looked up at the
+// listener's probes. It carries nothing about where the source is, so on its own a source on the
+// far side of a closed door arrives at full strength, louder than it would be in the same room.
+// Send it in at the gain its direct path would have had, which is what a reverb send is.
+static float baked_reverb_send(const LocalSteamAudioState *ls) {
+	float send = 1.0f;
+	if (ls->cfg.is_dist_attn_on) {
+		send *= ls->direct_outputs.distanceAttenuation;
+	}
+	if (ls->cfg.is_occlusion_on) {
+		const float *transmission = ls->direct_outputs.transmission;
+		float through = (transmission[0] + transmission[1] + transmission[2]) / 3.0f;
+		float occlusion = ls->direct_outputs.occlusion;
+		send *= occlusion + (1.0f - occlusion) * through;
+	}
+	return std::clamp(send, 0.0f, 1.0f);
+}
+
+static void scale_buffer(IPLAudioBuffer &buffer, float gain) {
+	for (int i = 0; i < buffer.numChannels; i++) {
+		for (int j = 0; j < buffer.numSamples; j++) {
+			buffer.data[i][j] *= gain;
+		}
+	}
+}
+
 int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int32_t frames) {
 	if (parent == nullptr || stream_playback.is_null() || Engine::get_singleton()->is_editor_hint()) {
 		fill_silence(buffer, 0, frames);
@@ -88,6 +114,9 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 
 // Runs one fixed-size Steam Audio block. Returns how many frames of it are valid.
 int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls, float rate_scale) {
+	if (tail_requested.load()) {
+		source_done = true;
+	}
 	if (source_done) {
 		return process_tail_block(gs, ls);
 	}
@@ -207,21 +236,40 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 		path_params.binaural = IPL_FALSE;
 		path_params.normalizeEQ = IPL_TRUE;
 		iplPathEffectApply(ls->fx.path, &path_params, &ls->bufs.mono, &ls->bufs.path_ambi);
-		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		// Decoded at the order the path effect wrote, not the source's own ambisonics setting.
+		IPLAmbisonicsDecodeEffectParams path_dec_params = dec_params;
+		path_dec_params.order = ls->cfg.pathing_order;
+		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &path_dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
 		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
 	}
 
 	gs->refl_ir_lock.lock();
-	if (wants_refl && (!needs_ir || ls->refl_outputs.ir != nullptr)) {
-		ls->refl_outputs.numChannels = ambisonic_channels_from(ls->cfg.ambisonics_order);
+	const bool have_ir = ls->refl_outputs.ir != nullptr && ls->refl_outputs.irSize > 0 && ls->refl_outputs.numChannels > 0;
+	if (wants_refl && (!needs_ir || have_ir)) {
+		// numChannels and irSize describe the impulse response the simulator actually produced,
+		// from the listener's reflection order and duration. Substituting the source's own
+		// settings here convolved past the end of it whenever the two disagreed.
 		ls->refl_outputs.type = SteamAudioConfig::reflection_type;
-		ls->refl_outputs.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
+		if (!needs_ir) {
+			// Parametric reverb is synthesised from decay times, so the simulator reports no
+			// impulse response dimensions and the effect needs to be told what to render into.
+			ls->refl_outputs.numChannels = ambisonic_channels_from(ls->cfg.ambisonics_order);
+			ls->refl_outputs.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
+		}
 		iplReflectionEffectApply(ls->fx.refl, &ls->refl_outputs, &ls->bufs.mono, &ls->bufs.refl_ambi, nullptr);
 
+		IPLAmbisonicsDecodeEffectParams refl_dec_params = dec_params;
+		if (needs_ir) {
+			refl_dec_params.order = ambisonic_order_from(ls->refl_outputs.numChannels);
+		}
+		ls->last_refl_order = refl_dec_params.order;
 		iplAmbisonicsDecodeEffectApply(
-				ls->fx.refl_dec, &dec_params,
+				ls->fx.refl_dec, &refl_dec_params,
 				&ls->bufs.refl_ambi, &ls->bufs.refl_out);
 
+		if (ls->cfg.is_baked_reverb_on) {
+			scale_buffer(ls->bufs.refl_out, baked_reverb_send(ls));
+		}
 		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
 	}
 	gs->refl_ir_lock.unlock();
@@ -286,7 +334,9 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 		if (iplPathEffectGetTail(ls->fx.path, &ls->bufs.path_ambi) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
 			remaining = true;
 		}
-		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		IPLAmbisonicsDecodeEffectParams path_dec_params = dec_params;
+		path_dec_params.order = ls->cfg.pathing_order;
+		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &path_dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
 		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
 	}
 
@@ -294,7 +344,12 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 		if (iplReflectionEffectGetTail(ls->fx.refl, &ls->bufs.refl_ambi, nullptr) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
 			remaining = true;
 		}
-		iplAmbisonicsDecodeEffectApply(ls->fx.refl_dec, &dec_params, &ls->bufs.refl_ambi, &ls->bufs.refl_out);
+		IPLAmbisonicsDecodeEffectParams refl_dec_params = dec_params;
+		refl_dec_params.order = ls->last_refl_order;
+		iplAmbisonicsDecodeEffectApply(ls->fx.refl_dec, &refl_dec_params, &ls->bufs.refl_ambi, &ls->bufs.refl_out);
+		if (ls->cfg.is_baked_reverb_on) {
+			scale_buffer(ls->bufs.refl_out, baked_reverb_send(ls));
+		}
 		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
 	}
 
@@ -329,6 +384,7 @@ int SteamAudioStreamPlayback::play_stream(const Ref<AudioStream> &p_stream, floa
 	source_done = false;
 	tail_active = false;
 	tail_done = false;
+	tail_requested.store(false);
 
 	return 0;
 }

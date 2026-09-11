@@ -12,6 +12,7 @@
 
 void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("play_stream", "stream", "from_offset", "volume_db", "pitch_scale"), &SteamAudioPlayer::play_stream, DEFVAL(0), DEFVAL(0), DEFVAL(1.0));
+	ClassDB::bind_method(D_METHOD("stop_ringing_out"), &SteamAudioPlayer::stop_ringing_out);
 	ClassDB::bind_method(D_METHOD("get_inner_stream"), &SteamAudioPlayer::get_inner_stream);
 	ClassDB::bind_method(D_METHOD("get_inner_stream_playback"), &SteamAudioPlayer::get_inner_stream_playback);
 
@@ -362,6 +363,15 @@ void SteamAudioPlayer::play_stream(const Ref<AudioStream> &p_stream, float p_fro
 	}
 
 	playback_ptr->play_stream(p_stream, p_from_offset, p_volume_db, p_pitch_scale);
+}
+
+void SteamAudioPlayer::stop_ringing_out() {
+	auto playback = dynamic_cast<SteamAudioStreamPlayback *>(get_stream_playback().ptr());
+	if (playback == nullptr) {
+		stop();
+		return;
+	}
+	playback->begin_tail();
 }
 
 Ref<AudioStream> SteamAudioPlayer::get_inner_stream() {

@@ -56,6 +56,7 @@ private:
 	std::vector<IPLStaticMesh> static_meshes_to_add;
 	// Instanced meshes currently in the scene, so a bake can leave them out.
 	std::vector<IPLInstancedMesh> dynamic_meshes;
+	bool dynamic_geometry_hidden = false;
 
 	// TODO: allow for multiple
 	SteamAudioListener *listener = nullptr;
