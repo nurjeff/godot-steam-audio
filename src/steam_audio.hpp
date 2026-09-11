@@ -115,6 +115,8 @@ struct LocalSteamAudioState {
 	IPLPathEffectParams path_outputs{};
 	std::vector<float> path_sh;
 	std::atomic<bool> path_active{ false };
+	// Whether the simulator still has pathing inputs for this source. Game thread only.
+	bool path_in_sim = false;
 	std::mutex path_mux;
 };
 

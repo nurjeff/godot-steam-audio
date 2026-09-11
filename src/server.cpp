@@ -364,6 +364,18 @@ void SteamAudioServer::flush_scene_changes() {
 	}
 }
 
+// A source that keeps pathing inputs after its probe batch is gone sends the simulator looking
+// for a path simulator that no longer exists.
+static void clear_pathing_inputs(LocalSteamAudioState *ls) {
+	if (!ls->path_in_sim) {
+		return;
+	}
+	IPLSimulationInputs inputs{};
+	iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_PATHING, &inputs);
+	ls->path_in_sim = false;
+	ls->path_active.store(false);
+}
+
 // Probe batches enter the simulator here, inside tick()'s window, because both the bake and
 // iplSimulatorAddProbeBatch touch state the reflection thread is otherwise using.
 void SteamAudioServer::flush_probe_batches() {
@@ -407,11 +419,10 @@ void SteamAudioServer::remove_probe_batch(SteamAudioProbeBatch *batch) {
 	if (!is_global_state_init.load()) {
 		return;
 	}
-	// Sources still pointing at this batch would path through freed probes.
-	for (auto ls : local_states) {
-		ls->path_active.store(false);
-	}
 	wait_for_refl_idle();
+	for (auto ls : local_states) {
+		clear_pathing_inputs(ls);
+	}
 	iplSimulatorRemoveProbeBatch(global_state.sim, batch->get_batch());
 	batch->mark_registered(false);
 	sim_needs_commit.store(true);
@@ -428,7 +439,7 @@ bool SteamAudioServer::rebuild_probe_batch(SteamAudioProbeBatch *batch, const St
 	bool was_registered = std::find(self->probe_batches.begin(), self->probe_batches.end(), batch) != self->probe_batches.end();
 	if (was_registered && batch->get_batch() != nullptr) {
 		for (auto ls : self->local_states) {
-			ls->path_active.store(false);
+			clear_pathing_inputs(ls);
 		}
 		iplSimulatorRemoveProbeBatch(self->global_state.sim, batch->get_batch());
 	}
@@ -456,17 +467,17 @@ IPLProbeBatch SteamAudioServer::get_pathing_probes() const {
 void SteamAudioServer::run_pathing() {
 	IPLProbeBatch probes = get_pathing_probes();
 	if (probes == nullptr) {
+		for (auto ls : local_states) {
+			ls->path_active.store(false);
+		}
 		return;
 	}
 
 	int num_path_srcs = 0;
 	for (auto ls : local_states) {
-		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree() || !ls->src.player->is_playing()) {
-			ls->path_active.store(false);
-			continue;
-		}
-		if (!ls->cfg.is_pathing_on) {
-			ls->path_active.store(false);
+		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree() || !ls->src.player->is_playing() ||
+				!ls->cfg.is_pathing_on) {
+			clear_pathing_inputs(ls);
 			continue;
 		}
 
@@ -481,6 +492,7 @@ void SteamAudioServer::run_pathing() {
 		inputs.enableValidation = ls->cfg.path_validation ? IPL_TRUE : IPL_FALSE;
 		inputs.findAlternatePaths = ls->cfg.path_alternate_routes ? IPL_TRUE : IPL_FALSE;
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_PATHING, &inputs);
+		ls->path_in_sim = true;
 		num_path_srcs++;
 	}
 	if (num_path_srcs == 0) {
