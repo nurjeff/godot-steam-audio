@@ -49,9 +49,16 @@ private:
 	int pending_pos = 0;
 	int pending_len = 0;
 	bool source_done = false;
+	// Once the source runs out, the effects keep ringing for as long as their impulse responses
+	// last. Cutting there is what makes a sound stop dead in a cathedral.
+	bool tail_active = false;
+	bool tail_done = false;
+	int tail_blocks = 0;
+	int tail_drain = 2;
 	PackedVector2Array scratch;
 
 	int process_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls, float rate_scale);
+	int process_tail_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls);
 
 protected:
 	static void _bind_methods();

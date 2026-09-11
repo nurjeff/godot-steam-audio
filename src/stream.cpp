@@ -89,7 +89,7 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 // Runs one fixed-size Steam Audio block. Returns how many frames of it are valid.
 int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls, float rate_scale) {
 	if (source_done) {
-		return 0;
+		return process_tail_block(gs, ls);
 	}
 
 	const int block = gs->audio_cfg.frameSize;
@@ -101,7 +101,7 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 	int available = std::min(int(scratch.size()), block);
 	if (available <= 0) {
 		source_done = true;
-		return 0;
+		return process_tail_block(gs, ls);
 	}
 	if (available < block) {
 		source_done = true;
@@ -232,6 +232,85 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 	return block;
 }
 
+// Drains what the effects are still holding after the source has run out. Each effect reports
+// whether it has more; the extra blocks past that flush the HRTF decoders, which have no tail of
+// their own to ask for.
+int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, LocalSteamAudioState *ls) {
+	if (tail_done) {
+		return 0;
+	}
+	if (!tail_active) {
+		tail_active = true;
+		tail_blocks = 0;
+		tail_drain = 2;
+	}
+	const int block = gs->audio_cfg.frameSize;
+	if (int(pending.size()) < block) {
+		pending.resize(block);
+	}
+	const int limit = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate)) / block + 16;
+	if (tail_blocks++ > limit) {
+		tail_active = false;
+		tail_done = true;
+		return 0;
+	}
+
+	IPLAmbisonicsDecodeEffectParams dec_params{};
+	dec_params.orientation = gs->listener_coords;
+	dec_params.order = ls->cfg.ambisonics_order;
+	dec_params.hrtf = gs->hrtf;
+	dec_params.binaural = IPL_TRUE;
+
+	bool remaining = false;
+	for (int i = 0; i < ls->bufs.out.numChannels; i++) {
+		for (int j = 0; j < ls->bufs.out.numSamples; j++) {
+			ls->bufs.out.data[i][j] = 0.0f;
+		}
+	}
+
+	if (iplDirectEffectGetTail(ls->fx.direct, &ls->bufs.direct) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
+		remaining = true;
+	}
+	if (ls->cfg.is_ambisonics_on) {
+		IPLAmbisonicsEncodeEffectParams enc_params{};
+		enc_params.direction = ipl_vec3_from(ls->dir_to_listener);
+		enc_params.order = ls->cfg.ambisonics_order;
+		iplAmbisonicsEncodeEffectApply(ls->fx.enc, &enc_params, &ls->bufs.direct, &ls->bufs.ambi);
+		iplAmbisonicsDecodeEffectApply(ls->fx.dec, &dec_params, &ls->bufs.ambi, &ls->bufs.out);
+	} else {
+		iplAudioBufferMix(gs->ctx, &ls->bufs.direct, &ls->bufs.out);
+	}
+
+	if (ls->cfg.is_pathing_on) {
+		if (iplPathEffectGetTail(ls->fx.path, &ls->bufs.path_ambi) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
+			remaining = true;
+		}
+		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
+	}
+
+	if (ls->cfg.is_reflection_on) {
+		if (iplReflectionEffectGetTail(ls->fx.refl, &ls->bufs.refl_ambi, nullptr) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
+			remaining = true;
+		}
+		iplAmbisonicsDecodeEffectApply(ls->fx.refl_dec, &dec_params, &ls->bufs.refl_ambi, &ls->bufs.refl_out);
+		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
+	}
+
+	if (remaining) {
+		tail_drain = 2;
+	} else if (--tail_drain <= 0) {
+		tail_active = false;
+		tail_done = true;
+	}
+
+	for (int i = 0; i < block; i++) {
+		pending[i].left = ls->bufs.out.data[0][i];
+		pending[i].right = ls->bufs.out.data[1][i];
+	}
+	return block;
+}
+
 void SteamAudioStreamPlayback::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("play_stream", "stream", "from_offset", "volume_db", "pitch_scale"), &SteamAudioStreamPlayback::play_stream, DEFVAL(0), DEFVAL(0), DEFVAL(1.0));
 }
@@ -247,6 +326,8 @@ int SteamAudioStreamPlayback::play_stream(const Ref<AudioStream> &p_stream, floa
 	pending_pos = 0;
 	pending_len = 0;
 	source_done = false;
+	tail_active = false;
+	tail_done = false;
 
 	return 0;
 }
@@ -267,6 +348,8 @@ void SteamAudioStreamPlayback::_start(double from_pos) {
 
 void SteamAudioStreamPlayback::_stop() {
 	is_active.store(false);
+	tail_active = false;
+	tail_done = true;
 	if (stream_playback == nullptr || !stream_playback->is_playing()) {
 		return;
 	}
