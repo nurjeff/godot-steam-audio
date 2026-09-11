@@ -23,10 +23,25 @@ private:
 	std::atomic<bool> is_refl_thread_processing;
 	std::atomic<bool> is_running;
 	std::atomic<bool> local_states_have_changed;
+	// Set when the scene or the simulator needs a commit; both are flushed from tick(), which
+	// is the only place where the reflection simulation is known to be parked.
+	std::atomic<bool> scene_needs_commit;
+	std::atomic<bool> sim_needs_commit;
 	std::mutex init_mux;
 	std::mutex refl_mux;
 	std::mutex tick_mux;
+	std::mutex scene_mux;
 	std::condition_variable cv;
+	std::condition_variable refl_done_cv;
+	bool has_warned_refl_src_limit = false;
+
+	// Latest pending transform per dynamic mesh. Applying these touches the scene, so they are
+	// queued on the game thread and flushed in tick() instead of being applied immediately.
+	std::vector<std::pair<IPLInstancedMesh, IPLMatrix4x4>> pending_dynamic_transforms;
+	std::vector<IPLSource> pending_sources_to_add;
+
+	void flush_scene_changes();
+	void mark_refl_idle();
 
 	// meshes to add to the global state scene after it's initialized.
 	std::vector<IPLStaticMesh> static_meshes_to_add;
@@ -57,6 +72,15 @@ public:
 	void remove_static_mesh(IPLStaticMesh mesh);
 	void add_dynamic_mesh(IPLInstancedMesh mesh);
 	void remove_dynamic_mesh(IPLInstancedMesh mesh);
+	void update_dynamic_mesh_transform(IPLInstancedMesh mesh, const IPLMatrix4x4 &transform);
+	void add_source(IPLSource source);
+	void remove_source(IPLSource source);
+
+	// Blocks until the reflection simulation is not running. Steam Audio forbids committing
+	// scene or simulator changes concurrently with a simulation, so anything that mutates
+	// either must call this first. Game thread only: the simulation is started exclusively by
+	// tick() on that same thread, so once this returns the caller owns the window.
+	void wait_for_refl_idle();
 
 	void tick();
 };

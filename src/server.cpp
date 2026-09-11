@@ -5,6 +5,7 @@
 #include "godot_cpp/core/memory.hpp"
 #include "godot_cpp/variant/callable_method_pointer.hpp"
 #include "phonon.h"
+#include "config.hpp"
 #include "player.hpp"
 #include "server_init.hpp"
 #include "steam_audio.hpp"
@@ -25,8 +26,11 @@ void SteamAudioServer::tick() {
 
 	SteamAudio::log(SteamAudio::log_debug, "tick");
 
-	if (!is_refl_thread_processing.load()) {
-		iplSceneCommit(self->global_state.scene);
+	// Steam Audio: "This function cannot be called concurrently with any simulation functions."
+	// The reflection simulation is only ever started at the end of this function, on this same
+	// thread, so observing it idle here means it stays idle for the rest of the window.
+	if (!self->is_refl_thread_processing.load()) {
+		self->flush_scene_changes();
 	}
 
 	SteamAudio::log(SteamAudio::log_debug, "tick: committed scene");
@@ -123,6 +127,8 @@ void SteamAudioServer::tick() {
 		return;
 	}
 
+	int num_refl_srcs = 0;
+
 	global_state.refl_ir_lock.lock();
 	for (auto ls : local_states) {
 		if (ls->src.player == nullptr || !ls->src.player->is_inside_tree()) {
@@ -171,6 +177,24 @@ void SteamAudioServer::tick() {
 		inputs.source = src_coords;
 
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &inputs);
+		num_refl_srcs++;
+	}
+
+	// Nothing wants reflections, so do not wake the reflection thread at all. This keeps the
+	// ray tracer off the CPU when the feature is unused, and leaves the scene free to be
+	// mutated without waiting. Players stop applying the effect when their flag is off, so no
+	// stale impulse response is left ringing.
+	if (num_refl_srcs == 0) {
+		SteamAudio::log(SteamAudio::log_debug, "tick: done, no sources want reflections");
+		return;
+	}
+
+	if (num_refl_srcs > SteamAudioConfig::max_num_refl_srcs && !has_warned_refl_src_limit) {
+		has_warned_refl_src_limit = true;
+		UtilityFunctions::push_warning(vformat(
+				"%d sources have reflections enabled, but SteamAudioConfig.max_reflection_sources is %d. "
+				"Raise it before the extension initializes, or reduce the number of reflective sources.",
+				num_refl_srcs, SteamAudioConfig::max_num_refl_srcs));
 	}
 
 	if (listener == nullptr || !listener->is_inside_tree()) {
@@ -254,12 +278,63 @@ void SteamAudioServer::run_refl_sim() {
 		// XXX: what happens if a local state is removed in the middle of a sim run...?
 		if (local_states_have_changed.load()) {
 			local_states_have_changed.store(false);
-			is_refl_thread_processing.store(false);
+			mark_refl_idle();
 			continue;
 		}
 		SteamAudio::log(SteamAudio::log_debug, "running reflection sim");
 		iplSimulatorRunReflections(global_state.sim);
+		mark_refl_idle();
+	}
+}
+
+void SteamAudioServer::mark_refl_idle() {
+	{
+		// Taken so a waiter cannot miss the notification between the store and the wait.
+		std::lock_guard<std::mutex> lock(refl_mux);
 		is_refl_thread_processing.store(false);
+	}
+	refl_done_cv.notify_all();
+}
+
+void SteamAudioServer::wait_for_refl_idle() {
+	if (!is_refl_thread_processing.load()) {
+		return;
+	}
+	std::unique_lock<std::mutex> lock(refl_mux);
+	refl_done_cv.wait(lock, [&] {
+		return !is_refl_thread_processing.load() || !is_running.load();
+	});
+}
+
+// Applies everything that changes the scene or the simulator, then commits once. Steam Audio
+// asks for exactly this: "For best performance, call this function once after all changes have
+// been made for a given frame." Only called from tick(), with the reflection thread parked.
+void SteamAudioServer::flush_scene_changes() {
+	std::vector<std::pair<IPLInstancedMesh, IPLMatrix4x4>> transforms;
+	{
+		std::lock_guard<std::mutex> lock(scene_mux);
+		transforms.swap(pending_dynamic_transforms);
+	}
+	for (auto &pending : transforms) {
+		iplInstancedMeshUpdateTransform(pending.first, global_state.scene, pending.second);
+	}
+	if (!transforms.empty()) {
+		scene_needs_commit.store(true);
+	}
+	if (scene_needs_commit.exchange(false)) {
+		iplSceneCommit(global_state.scene);
+	}
+	std::vector<IPLSource> sources;
+	{
+		std::lock_guard<std::mutex> lock(scene_mux);
+		sources.swap(pending_sources_to_add);
+	}
+	for (auto source : sources) {
+		iplSourceAdd(source, global_state.sim);
+	}
+	// Sources added or removed after startup only take part in simulations once committed.
+	if (!sources.empty() || sim_needs_commit.exchange(false)) {
+		iplSimulatorCommit(global_state.sim);
 	}
 }
 
@@ -284,39 +359,95 @@ void SteamAudioServer::remove_local_state(LocalSteamAudioState *ls) {
 }
 
 void SteamAudioServer::add_static_mesh(IPLStaticMesh mesh) {
-	if (is_global_state_init.load()) {
-		iplStaticMeshAdd(mesh, global_state.scene);
-	} else {
+	if (!is_global_state_init.load()) {
 		static_meshes_to_add.push_back(mesh);
+		return;
 	}
+	wait_for_refl_idle();
+	iplStaticMeshAdd(mesh, global_state.scene);
+	scene_needs_commit.store(true);
 }
 
 void SteamAudioServer::remove_static_mesh(IPLStaticMesh mesh) {
-	if (is_global_state_init.load()) {
-		iplStaticMeshRemove(mesh, global_state.scene);
-	} else {
-		// Probably won't happen?
+	if (!is_global_state_init.load()) {
 		auto it = std::find(static_meshes_to_add.begin(), static_meshes_to_add.end(), mesh);
 		if (it != static_meshes_to_add.end()) {
 			static_meshes_to_add.erase(it);
 		}
+		return;
 	}
+	// Removing a mesh frees its acceleration structure, so this must never overlap a running
+	// simulation. Unloading a level used to crash the process here.
+	wait_for_refl_idle();
+	iplStaticMeshRemove(mesh, global_state.scene);
+	scene_needs_commit.store(true);
 }
 
 void SteamAudioServer::add_dynamic_mesh(IPLInstancedMesh mesh) {
-	if (is_global_state_init.load()) {
-		iplInstancedMeshAdd(mesh, global_state.scene);
-	} else {
-		SteamAudio::log(SteamAudio::log_error, "Adding a dynamic mesh, but SteamAudio is not initialized. Probably crashing soon.");
+	if (!is_global_state_init.load()) {
+		SteamAudio::log(SteamAudio::log_error, "Adding a dynamic mesh, but SteamAudio is not initialized.");
+		return;
 	}
+	wait_for_refl_idle();
+	iplInstancedMeshAdd(mesh, global_state.scene);
+	scene_needs_commit.store(true);
 }
 
 void SteamAudioServer::remove_dynamic_mesh(IPLInstancedMesh mesh) {
 	if (!is_global_state_init.load()) {
 		return; // We've probably already deleted the scene.
 	}
-
+	wait_for_refl_idle();
 	iplInstancedMeshRemove(mesh, global_state.scene);
+	// Drop any transform update still queued for a mesh that is going away.
+	{
+		std::lock_guard<std::mutex> lock(scene_mux);
+		pending_dynamic_transforms.erase(
+				std::remove_if(pending_dynamic_transforms.begin(), pending_dynamic_transforms.end(),
+						[mesh](const std::pair<IPLInstancedMesh, IPLMatrix4x4> &pending) {
+							return pending.first == mesh;
+						}),
+				pending_dynamic_transforms.end());
+	}
+	scene_needs_commit.store(true);
+}
+
+// Queued rather than applied: dynamic geometry moves every physics frame, and waiting for the
+// ray tracer that often would stall the game thread. tick() applies the latest transform.
+void SteamAudioServer::update_dynamic_mesh_transform(IPLInstancedMesh mesh, const IPLMatrix4x4 &transform) {
+	if (!is_global_state_init.load()) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(scene_mux);
+	for (auto &pending : pending_dynamic_transforms) {
+		if (pending.first == mesh) {
+			pending.second = transform;
+			return;
+		}
+	}
+	pending_dynamic_transforms.emplace_back(mesh, transform);
+}
+
+// Queued rather than applied: this is reached from whichever thread first mixes a player,
+// including the audio thread, which must never block waiting for the ray tracer.
+void SteamAudioServer::add_source(IPLSource source) {
+	if (!is_global_state_init.load()) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(scene_mux);
+	pending_sources_to_add.push_back(source);
+}
+
+void SteamAudioServer::remove_source(IPLSource source) {
+	if (!is_global_state_init.load()) {
+		return;
+	}
+	// The caller releases the source right after this, so the removal is committed here rather
+	// than deferred: a released source must not still be committed in the simulator.
+	wait_for_refl_idle();
+	iplSourceRemove(source, global_state.sim);
+	iplSimulatorCommit(global_state.sim);
+	sim_needs_commit.store(false);
 }
 
 SteamAudioServer::SteamAudioServer() {
@@ -325,6 +456,8 @@ SteamAudioServer::SteamAudioServer() {
 	is_refl_thread_processing.store(false);
 	is_running.store(true);
 	local_states_have_changed.store(false);
+	scene_needs_commit.store(false);
+	sim_needs_commit.store(false);
 }
 
 SteamAudioServer::~SteamAudioServer() {
@@ -342,6 +475,11 @@ SteamAudioServer::~SteamAudioServer() {
 		return;
 	}
 	SteamAudio::log(SteamAudio::log_debug, "destroying steam audio server");
+
+	// Cleared before anything is released: nodes are freed in an order this singleton does not
+	// control, and a geometry or player destructor that runs afterwards must not call into a
+	// released scene or simulator. Every mutator checks this flag first.
+	self->is_global_state_init.store(false);
 
 	iplAmbisonicsDecodeEffectRelease(&self->global_state.ambi_dec_effect);
 	iplAmbisonicsEncodeEffectRelease(&self->global_state.ambi_enc_effect);

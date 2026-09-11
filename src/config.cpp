@@ -2,6 +2,7 @@
 #include "godot_cpp/classes/engine.hpp"
 #include "godot_cpp/core/class_db.hpp"
 #include "server.hpp"
+#include <godot_cpp/variant/utility_functions.hpp>
 #include "steam_audio.hpp"
 
 SteamAudio::GodotSteamAudioLogLevel SteamAudioConfig::log_level = SteamAudio::log_info;
@@ -64,6 +65,16 @@ SteamAudioConfig::~SteamAudioConfig() {}
 void SteamAudioConfig::ready_internal() {
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return;
+	}
+
+	// These properties are read once, when the simulator is created. If something else already
+	// forced that (a SteamAudioGeometry entering the tree first, or an earlier scene), this
+	// node's settings are silently ignored, which is worth saying out loud.
+	if (SteamAudioServer::get_singleton()->get_global_state(false) != nullptr) {
+		UtilityFunctions::push_warning(
+				"SteamAudioConfig entered the tree after Steam Audio was already initialized, so its "
+				"settings have not been applied. Add the config before any geometry, and keep it for "
+				"the lifetime of the process.");
 	}
 
 	// Initialize global state

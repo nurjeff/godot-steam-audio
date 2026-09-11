@@ -105,18 +105,23 @@ SteamAudioPlayer::SteamAudioPlayer() {
 }
 SteamAudioPlayer::~SteamAudioPlayer() {
 	SteamAudio::log(SteamAudio::log_debug, "destroying player");
+	std::unique_lock lock(local_state.mux);
+
+	// Unregister unconditionally and before anything else. The local state is registered by
+	// whichever thread first mixes this player, which can happen while this destructor runs,
+	// so gating removal on is_local_state_init could leave a freed player in the server's
+	// list. tick() then dereferenced it and crashed the process.
+	can_load_local_state.store(false);
+	SteamAudioServer::get_singleton()->remove_local_state(&local_state);
 	if (!is_local_state_init.load()) {
 		return;
 	}
-
-	std::unique_lock lock(local_state.mux);
-
 	is_local_state_init.store(false);
-	can_load_local_state.store(false);
-	SteamAudioServer::get_singleton()->remove_local_state(&local_state);
 	auto gs = SteamAudioServer::get_singleton()->get_global_state();
 
-	iplSourceRemove(local_state.src.src, gs->sim);
+	// Removes and commits with the reflection simulation parked, so the source is no longer
+	// part of any simulation before it is released.
+	SteamAudioServer::get_singleton()->remove_source(local_state.src.src);
 	iplSourceRelease(&local_state.src.src);
 	iplDirectEffectRelease(&local_state.fx.direct);
 	iplReflectionEffectRelease(&local_state.fx.refl);
@@ -143,7 +148,15 @@ LocalSteamAudioState *SteamAudioPlayer::get_local_state() {
 		return nullptr;
 	}
 	if (!is_local_state_init.load()) {
-		init_local_state();
+		// Taken because the destructor holds it for the whole teardown: either the state is
+		// initialized before this player starts going away, or this sees it is too late.
+		std::unique_lock lock(local_state.mux);
+		if (!can_load_local_state.load()) {
+			return nullptr;
+		}
+		if (!is_local_state_init.load()) {
+			init_local_state();
+		}
 	}
 	return &local_state;
 }
@@ -155,9 +168,11 @@ void SteamAudioPlayer::init_local_state() {
 
 	IPLSourceSettings src_cfg{};
 	src_cfg.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
+	// Registering a source changes the simulator, which Steam Audio forbids while a simulation
+	// is running. The server queues it and commits in its own safe window: this can run on the
+	// audio thread, which must never block on the ray tracer.
 	handleErr(iplSourceCreate(gs->sim, &src_cfg, &local_state.src.src));
-	iplSourceAdd(local_state.src.src, gs->sim);
-	iplSimulatorCommit(gs->sim);
+	SteamAudioServer::get_singleton()->add_source(local_state.src.src);
 
 	// TODO: check if we can't create effects globally and use their Reset functions.
 	// If we create these globally and use them for all sources, then strange things happen
@@ -200,7 +215,8 @@ void SteamAudioPlayer::_notification(int p_what) {
 			ready_internal();
 			break;
 		case NOTIFICATION_EXIT_TREE:
-			if (!Engine::get_singleton()->is_editor_hint() && is_local_state_init.load()) {
+			// Unconditional: see the destructor. Removal is idempotent.
+			if (!Engine::get_singleton()->is_editor_hint()) {
 				SteamAudioServer::get_singleton()->remove_local_state(&local_state);
 			}
 			break;
@@ -285,6 +301,9 @@ void SteamAudioPlayer::play_stream(const Ref<AudioStream> &p_stream, float p_fro
 	if (this->is_playing()) {
 		this->stop();
 	}
+	// The volume and pitch arguments used to be accepted and then dropped on the floor.
+	this->set_volume_db(p_volume_db);
+	this->set_pitch_scale(p_pitch_scale);
 	this->play();
 
 	auto str = dynamic_cast<SteamAudioStream *>(get_stream().ptr());

@@ -25,6 +25,8 @@ private:
 	void unregister_geometry();
 
 	void ready_internal();
+	Transform3D last_trf;
+	bool has_last_trf = false;
 	void process_internal(double delta);
 
 protected:

@@ -65,10 +65,19 @@ void SteamAudioDynamicGeometry::process_internal(double delta) {
 		}
 	}
 
-	auto orig = get_global_transform().origin;
-	auto right = get_global_transform().get_basis().get_column(0);
-	auto up = get_global_transform().get_basis().get_column(1);
-	auto fwd = -get_global_transform().get_basis().get_column(2);
+	// Geometry that has not moved needs no update, which also lets the server skip its scene
+	// commit entirely for a frame where nothing else changed.
+	Transform3D trf = get_global_transform();
+	if (has_last_trf && trf.is_equal_approx(last_trf)) {
+		return;
+	}
+	last_trf = trf;
+	has_last_trf = true;
+
+	auto orig = trf.origin;
+	auto right = trf.get_basis().get_column(0);
+	auto up = trf.get_basis().get_column(1);
+	auto fwd = -trf.get_basis().get_column(2);
 
 	IPLMatrix4x4 new_trf{
 		{
@@ -79,8 +88,8 @@ void SteamAudioDynamicGeometry::process_internal(double delta) {
 		}
 	};
 
-	// TODO: check if it improves perf to skip this if the object does not move.
-	iplInstancedMeshUpdateTransform(mesh, SteamAudioServer::get_singleton()->get_global_state()->scene, new_trf);
+	// Queued, not applied: touching the scene here would have to wait for the ray tracer.
+	SteamAudioServer::get_singleton()->update_dynamic_mesh_transform(mesh, new_trf);
 }
 
 Ref<SteamAudioMaterial> SteamAudioDynamicGeometry::get_material() { return mat; }
@@ -125,6 +134,25 @@ void SteamAudioDynamicGeometry::destroy_geometry() {
 		iplStaticMeshRelease(&m);
 	}
 	meshes.clear();
+
+	// The instanced mesh and its sub-scene were never released, which leaked a scene and its
+	// acceleration structure per dynamic geometry node. Only touch them while Steam Audio is
+	// still alive; at process exit the server may already be gone.
+	if (SteamAudioServer::get_singleton()->get_global_state(false) == nullptr) {
+		mesh = nullptr;
+		sub_scene = nullptr;
+		is_init.store(false);
+		return;
+	}
+	if (mesh != nullptr) {
+		iplInstancedMeshRelease(&mesh);
+		mesh = nullptr;
+	}
+	if (sub_scene != nullptr) {
+		iplSceneRelease(&sub_scene);
+		sub_scene = nullptr;
+	}
+	is_init.store(false);
 }
 
 void SteamAudioDynamicGeometry::register_geometry() {
