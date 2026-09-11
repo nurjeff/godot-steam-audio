@@ -91,7 +91,8 @@ inline std::vector<IPLStaticMesh> create_meshes_from_mesh_inst_3d(MeshInstance3D
 
 	IPLMaterial material;
 	if (mat == nullptr) {
-		material = IPLMaterial{ { 0.f, 0.f, 0.f }, 0.f, { 0.f, 0.f, 0.f } };
+		// Valve's "generic" preset. Zero here meant a perfect mirror that blocked all sound.
+		material = IPLMaterial{ { 0.10f, 0.20f, 0.30f }, 0.05f, { 0.100f, 0.050f, 0.030f } };
 	} else {
 		material = mat->get_material();
 	}
@@ -123,7 +124,8 @@ inline std::vector<IPLStaticMesh> create_meshes_from_coll_inst_3d(CollisionShape
 
 	IPLMaterial material;
 	if (mat == nullptr) {
-		material = IPLMaterial{ { 0.f, 0.f, 0.f }, 0.f, { 0.f, 0.f, 0.f } };
+		// Valve's "generic" preset. Zero here meant a perfect mirror that blocked all sound.
+		material = IPLMaterial{ { 0.10f, 0.20f, 0.30f }, 0.05f, { 0.100f, 0.050f, 0.030f } };
 	} else {
 		material = mat->get_material();
 	}

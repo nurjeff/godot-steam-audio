@@ -1,18 +1,21 @@
 #include "register_types.hpp"
 
 #include "config.hpp"
+#include "editor_plugin.hpp"
 #include "geometry.hpp"
 #include "geometry_dynamic.hpp"
 #include "godot_cpp/core/memory.hpp"
 #include "listener.hpp"
 #include "material.hpp"
 #include "player.hpp"
+#include "scene_tools.hpp"
 #include "server.hpp"
 #include "stream.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
+#include <godot_cpp/classes/editor_plugin_registration.hpp>
 #include <godot_cpp/godot.hpp>
 
 using namespace godot;
@@ -20,6 +23,12 @@ using namespace godot;
 SteamAudioServer *srv;
 
 void init_ext(ModuleInitializationLevel p_level) {
+	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		ClassDB::register_internal_class<SteamAudioEditorPlugin>();
+		EditorPlugins::add_by_type<SteamAudioEditorPlugin>();
+		return;
+	}
+
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE && p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}
@@ -33,6 +42,7 @@ void init_ext(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SteamAudioMaterial>();
 		ClassDB::register_class<SteamAudioConfig>();
 		ClassDB::register_class<SteamAudioPlayer>();
+		ClassDB::register_class<SteamAudioSceneTools>();
 	}
 
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {

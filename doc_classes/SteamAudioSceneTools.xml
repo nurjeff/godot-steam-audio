@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SteamAudioSceneTools" inherits="RefCounted" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
+	<brief_description>
+		Scene inspection helpers shared by the editor plugin and usable from tool scripts.
+	</brief_description>
+	<description>
+		Backs the [b]Project &gt; Tools &gt; Steam Audio[/b] menu. The same methods are callable from [code]@tool[/code] scripts so you can script acoustic setup or check a scene in CI.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="find_geometry" qualifiers="static">
+			<return type="Node[]" />
+			<param index="0" name="root" type="Node" />
+			<description>
+				Every [SteamAudioGeometry] and [SteamAudioDynamicGeometry] below [param root].
+			</description>
+		</method>
+		<method name="find_geometry_targets" qualifiers="static">
+			<return type="Node[]" />
+			<param index="0" name="root" type="Node" />
+			<description>
+				Every [MeshInstance3D] and [CollisionShape3D] below [param root] that has no acoustic geometry child yet.
+			</description>
+		</method>
+		<method name="validate_scene" qualifiers="static">
+			<return type="PackedStringArray" />
+			<param index="0" name="root" type="Node" />
+			<description>
+				One line per problem found in the scene below [param root]. An empty array means the setup looks usable.
+			</description>
+		</method>
+	</methods>
+</class>
