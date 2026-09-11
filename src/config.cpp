@@ -7,6 +7,7 @@
 
 SteamAudio::GodotSteamAudioLogLevel SteamAudioConfig::log_level = SteamAudio::log_info;
 float SteamAudioConfig::hrtf_volume = 1.0f;
+IPLHRTFNormType SteamAudioConfig::hrtf_normalization = IPL_HRTFNORMTYPE_NONE;
 int SteamAudioConfig::max_ambisonics_order = 1;
 int SteamAudioConfig::max_num_occ_samples = 64;
 int SteamAudioConfig::max_num_refl_rays = 4096;
@@ -23,6 +24,10 @@ void SteamAudioConfig::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "global_log_level", PROPERTY_HINT_ENUM, "Debug,Info,Warning,Error"), "set_global_log_level", "get_global_log_level");
 
 	ADD_GROUP("Performance", "");
+	ClassDB::bind_method(D_METHOD("get_hrtf_normalization"), &SteamAudioConfig::get_hrtf_normalization);
+	ClassDB::bind_method(D_METHOD("set_hrtf_normalization", "p_hrtf_normalization"), &SteamAudioConfig::set_hrtf_normalization);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "hrtf_normalization", PROPERTY_HINT_ENUM, "None,RMS"), "set_hrtf_normalization", "get_hrtf_normalization");
+
 	ClassDB::bind_method(D_METHOD("get_reflection_type"), &SteamAudioConfig::get_reflection_type);
 	ClassDB::bind_method(D_METHOD("set_reflection_type", "p_reflection_type"), &SteamAudioConfig::set_reflection_type);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "reflection_type", PROPERTY_HINT_ENUM, "Convolution,Parametric,Hybrid"), "set_reflection_type", "get_reflection_type");
@@ -125,6 +130,9 @@ void SteamAudioConfig::set_hrtf_volume(float p_hrtf_volume) { hrtf_volume = p_hr
 
 int SteamAudioConfig::get_max_ambisonics_order() { return max_ambisonics_order; }
 void SteamAudioConfig::set_max_ambisonics_order(int p_max_ambisonics_order) { max_ambisonics_order = p_max_ambisonics_order; }
+
+IPLHRTFNormType SteamAudioConfig::get_hrtf_normalization() { return hrtf_normalization; }
+void SteamAudioConfig::set_hrtf_normalization(IPLHRTFNormType p_hrtf_normalization) { hrtf_normalization = p_hrtf_normalization; }
 
 IPLReflectionEffectType SteamAudioConfig::get_reflection_type() { return reflection_type; }
 void SteamAudioConfig::set_reflection_type(IPLReflectionEffectType p_reflection_type) { reflection_type = p_reflection_type; }

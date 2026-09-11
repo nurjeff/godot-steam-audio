@@ -16,6 +16,7 @@ using namespace godot;
 VARIANT_ENUM_CAST(IPLAirAbsorptionModelType);
 VARIANT_ENUM_CAST(IPLTransmissionType);
 VARIANT_ENUM_CAST(IPLReflectionEffectType);
+VARIANT_ENUM_CAST(IPLHRTFNormType);
 
 class SteamAudio {
 public:

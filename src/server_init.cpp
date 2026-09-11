@@ -15,9 +15,11 @@ IPLAudioSettings create_audio_cfg() {
 }
 
 IPLHRTF create_hrtf(IPLContext ctx, IPLAudioSettings audio_cfg) {
-	IPLHRTFSettings hrtf_cfg;
+	// Zero-initialized: normType and the SOFA fields were being passed uninitialized.
+	IPLHRTFSettings hrtf_cfg{};
 	hrtf_cfg.type = IPL_HRTFTYPE_DEFAULT;
 	hrtf_cfg.volume = SteamAudioConfig::hrtf_volume;
+	hrtf_cfg.normType = SteamAudioConfig::hrtf_normalization;
 
 	IPLHRTF hrtf;
 	IPLerror err = iplHRTFCreate(ctx, &audio_cfg, &hrtf_cfg, &hrtf);

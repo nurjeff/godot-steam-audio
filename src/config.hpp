@@ -27,6 +27,7 @@ protected:
 public:
 	static SteamAudio::GodotSteamAudioLogLevel log_level;
 	static float hrtf_volume;
+	static IPLHRTFNormType hrtf_normalization;
 	static int max_ambisonics_order;
 	static int max_num_occ_samples;
 	static int max_num_refl_rays;
@@ -48,6 +49,8 @@ public:
 
 	float get_hrtf_volume();
 	void set_hrtf_volume(float p_hrtf_volume);
+	IPLHRTFNormType get_hrtf_normalization();
+	void set_hrtf_normalization(IPLHRTFNormType p_hrtf_normalization);
 	int get_max_ambisonics_order();
 	void set_max_ambisonics_order(int p_max_ambisonics_order);
 	IPLSceneType get_scene_type();

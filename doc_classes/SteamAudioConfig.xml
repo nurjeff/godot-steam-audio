@@ -9,6 +9,9 @@
 	<tutorials>
 	</tutorials>
 	<members>
+		<member name="hrtf_normalization" type="int" setter="set_hrtf_normalization" getter="get_hrtf_normalization" enum="SteamAudioConfig.HRTFNormalization" default="0">
+			[code]RMS[/code] evens out the perceived volume of a source as it moves around the listener. [code]None[/code] uses the HRTF data as measured. Read once, when Steam Audio initializes.
+		</member>
 		<member name="reflection_type" type="int" setter="set_reflection_type" getter="get_reflection_type" enum="SteamAudioConfig.ReflectionType" default="0">
 			How reflections are rendered. [code]Convolution[/code] is the most detailed and the most expensive. [code]Parametric[/code] approximates the decay instead of rendering individual echoes, and is much cheaper. [code]Hybrid[/code] renders the early part with convolution and estimates the tail. Read once, when Steam Audio initializes.
 		</member>
