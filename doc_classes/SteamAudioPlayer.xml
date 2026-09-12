@@ -60,7 +60,7 @@
 		<member name="max_reflection_distance" type="float" setter="set_max_reflection_distance" getter="get_max_reflection_distance" default="10000.0">
             The maximum distance from the listener at which reflection simulation is run for this audio source. Keep in mind that this does not disable reflection if it has already been simulated, it just doesn't update the effect.
 		</member>
-		<member name="min_attenuation_distance" type="float" setter="set_min_attenuation_distance" getter="get_min_attenuation_distance" default="0.0">
+		<member name="min_attenuation_distance" type="float" setter="set_min_attenuation_distance" getter="get_min_attenuation_distance" default="1.0">
             See
             [url=https://valvesoftware.github.io/steam-audio/doc/capi/simulation.html#_CPPv4N27IPLDistanceAttenuationModel11minDistanceE]IPLDistanceAttenuationModel.minDistance[/url], and note the distance attenuation type in godot-steam-audio is always [code]IPL_DISTANCEATTENUATIONTYPE_INVERSEDISTANCE[/code].
 		</member>

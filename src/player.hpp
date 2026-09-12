@@ -23,7 +23,10 @@ private:
 		4.0f, // occ_radius
 		32, // occ_samples
 		16, // transm_rays
-		0.0f, // min_attn_dist
+		// A reference distance, not a floor on audibility. With distance attenuation on by
+		// default, leaving this at zero let the inverse-distance curve run away at point
+		// blank: 0.1 m measured +20 dB against 1 m and peaked at 2.16, well past clipping.
+		1.0f, // min_attn_dist
 		1, // ambisonics_order
 		10000.0f, // max_refl_dist
 		// A 3D source that does not get quieter with distance is nobody's intent. Turning this
