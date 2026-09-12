@@ -20,11 +20,16 @@ private:
 	// The authored settings. process_internal copies them into the local state whenever a setter
 	// marks them dirty, which is what makes the properties adjustable at runtime.
 	SteamAudioSourceConfig cfg{
-		// The source's own radius, which is what the volumetric occlusion sphere models. At 4 m
-		// a prop-sized source never fully occludes: measured through a doorway it floored at 0.50,
-		// leaking half the direct sound through the wall for ever. At 1 m the same walk ramps
-		// 1.00, 0.93, 0.90, 0.66, 0.41, 0.34, 0.17, 0.03 and reaches silence.
-		1.0f, // occ_radius
+		// The sphere the volumetric occlusion test models the source as. It doubles as the width
+		// of the shadow edge, so it trades physical source size against how abruptly a source
+		// disappears when the sightline breaks. Measured stepping past a door jamb at 10 cm:
+		//   1 m  ramp over 40 cm, worst step 9.2 dB
+		//   2 m  ramp over 70 cm, worst step 7.1 dB
+		//   3 m  ramp over 90 cm, worst step 6.7 dB, but only 0.95 occluded with a clear
+		//        sightline, and a 0.05 tail long past the wall
+		// 4 m, the old default, never occluded past 0.50: half the direct sound leaked through
+		// the wall for ever. 2 m is the widest that still reaches both 1.0 and 0.0.
+		2.0f, // occ_radius
 		32, // occ_samples
 		16, // transm_rays
 		// A reference distance, not a floor on audibility. With distance attenuation on by

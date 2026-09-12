@@ -67,8 +67,8 @@
 		<member name="occlusion" type="bool" setter="set_occlusion_on" getter="is_occlusion_on" default="true">
 			Whether SteamAudio occlusion and transmission is enabled.
 		</member>
-		<member name="occlusion_radius" type="float" setter="set_occlusion_radius" getter="get_occlusion_radius" default="1.0">
-			The radius of the sphere modelling the source's own size, which is what lets occlusion be partial rather than on or off. Keep it near the real size of the thing making the sound: a prop-sized source at 4 m never occludes fully, and half the direct sound leaks through a wall for ever.
+		<member name="occlusion_radius" type="float" setter="set_occlusion_radius" getter="get_occlusion_radius" default="2.0">
+			The radius of the sphere modelling the source's own size, which is what lets occlusion be partial rather than on or off. Keep it near the real size of the thing making the sound: at 4 m a prop-sized source never occludes past 0.50 and half the direct sound leaks through a wall for ever, while at 3 m it is already slightly occluded with a clear sightline. It doubles as the width of the shadow edge: stepping past a door jamb, 1 m ramps over 40 cm and 2 m over 70 cm.
 			Place the source clear of surfaces. Volumetric occlusion samples a sphere around the source and first discards every sample the source itself cannot see, so a source sitting exactly on a floor or a table top degenerates to on/off no matter what this radius is. Lifting it clear turns the same walk into a smooth ramp.
 		</member>
 		<member name="occlusion_samples" type="int" setter="set_occlusion_samples" getter="get_occlusion_samples" default="32">
