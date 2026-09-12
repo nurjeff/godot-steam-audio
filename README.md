@@ -39,6 +39,21 @@ when a source is genuinely waiting on one, instead of on every sub-scene. Warnin
 strength and the attenuation filter are gone too, because this node overrides both itself, so
 they fired on every untouched player and said nothing actionable.
 
+- `occlusion_radius` is 1 m, the size of the thing making the sound, rather than 4 m. Volumetric
+  occlusion models the source as a sphere and reports the fraction of it the listener can see, so
+  an oversized radius never occludes fully: measured through a doorway it floored at 0.50, leaking
+  half the direct sound through a wall for ever. At 1 m the same walk ramps 1.00, 0.93, 0.90, 0.66,
+  0.41, 0.34, 0.17, 0.03 and reaches silence.
+
+Place sources clear of surfaces. Volumetric occlusion samples a sphere around the source and first
+discards every sample the source itself cannot see, so one sitting exactly on a floor or a table
+top degenerates to on/off whatever the radius is set to, and the level drops off a cliff the
+instant the sightline breaks. Measured at 10 cm steps through a doorway: on the floor the fraction
+went 1.00, 1.00, 1.00, 1.00, 0.00, 0.00 with the radius making no difference at all; lifted 25 cm
+clear it went 0.88, 0.72, 0.48, 0.16, 0.04, 0.00. `get_occlusion_level`, `get_transmission_level`
+and `get_distance_attenuation_level` report what the simulation last computed, so this is visible
+rather than guessed at.
+
 `SteamAudioProbeBatch` now also registers itself with the simulator when you bake it directly, not
 only when `prepare_on_ready` is set. Baking an unregistered batch used to produce real probes, a real
 file and a real probe count that the simulator never saw, which is indistinguishable from having no

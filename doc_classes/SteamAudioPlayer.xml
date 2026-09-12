@@ -67,8 +67,9 @@
 		<member name="occlusion" type="bool" setter="set_occlusion_on" getter="is_occlusion_on" default="true">
 			Whether SteamAudio occlusion and transmission is enabled.
 		</member>
-		<member name="occlusion_radius" type="float" setter="set_occlusion_radius" getter="get_occlusion_radius" default="4.0">
-			See [url=https://valvesoftware.github.io/steam-audio/doc/capi/simulation.html#_CPPv4N19IPLSimulationInputs15occlusionRadiusE]IPLSimulationInputs.occlusionRadius[/url].
+		<member name="occlusion_radius" type="float" setter="set_occlusion_radius" getter="get_occlusion_radius" default="1.0">
+			The radius of the sphere modelling the source's own size, which is what lets occlusion be partial rather than on or off. Keep it near the real size of the thing making the sound: a prop-sized source at 4 m never occludes fully, and half the direct sound leaks through a wall for ever.
+			Place the source clear of surfaces. Volumetric occlusion samples a sphere around the source and first discards every sample the source itself cannot see, so a source sitting exactly on a floor or a table top degenerates to on/off no matter what this radius is. Lifting it clear turns the same walk into a smooth ramp.
 		</member>
 		<member name="occlusion_samples" type="int" setter="set_occlusion_samples" getter="get_occlusion_samples" default="32">
 			See [url=https://valvesoftware.github.io/steam-audio/doc/capi/simulation.html#_CPPv4N19IPLSimulationInputs19numOcclusionSamplesE]IPLSimulationInputs.numOcclusionSamples.

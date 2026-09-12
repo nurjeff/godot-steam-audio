@@ -20,7 +20,11 @@ private:
 	// The authored settings. process_internal copies them into the local state whenever a setter
 	// marks them dirty, which is what makes the properties adjustable at runtime.
 	SteamAudioSourceConfig cfg{
-		4.0f, // occ_radius
+		// The source's own radius, which is what the volumetric occlusion sphere models. At 4 m
+		// a prop-sized source never fully occludes: measured through a doorway it floored at 0.50,
+		// leaking half the direct sound through the wall for ever. At 1 m the same walk ramps
+		// 1.00, 0.93, 0.90, 0.66, 0.41, 0.34, 0.17, 0.03 and reaches silence.
+		1.0f, // occ_radius
 		32, // occ_samples
 		16, // transm_rays
 		// A reference distance, not a floor on audibility. With distance attenuation on by
@@ -141,6 +145,11 @@ public:
 	// carries. Read-only; the point is to be able to see pathing working.
 	bool is_path_active();
 	float get_path_level();
+	// What the simulation last computed for the direct path, so the shape of an occlusion
+	// transition can be seen rather than guessed at.
+	float get_occlusion_level();
+	float get_transmission_level();
+	float get_distance_attenuation_level();
 
 	void play_stream(const Ref<AudioStream> &p_stream, float p_from_offset, float p_volume_db, float p_pitch_scale);
 	// Ends the source and lets its reverb decay. stop() cuts everything immediately, which is

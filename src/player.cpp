@@ -66,6 +66,9 @@ void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_path_vis_range", "p_v"), &SteamAudioPlayer::set_path_vis_range);
 	ClassDB::bind_method(D_METHOD("is_path_active"), &SteamAudioPlayer::is_path_active);
 	ClassDB::bind_method(D_METHOD("get_path_level"), &SteamAudioPlayer::get_path_level);
+	ClassDB::bind_method(D_METHOD("get_occlusion_level"), &SteamAudioPlayer::get_occlusion_level);
+	ClassDB::bind_method(D_METHOD("get_transmission_level"), &SteamAudioPlayer::get_transmission_level);
+	ClassDB::bind_method(D_METHOD("get_distance_attenuation_level"), &SteamAudioPlayer::get_distance_attenuation_level);
 	ClassDB::bind_method(D_METHOD("is_baked_reverb_on"), &SteamAudioPlayer::is_baked_reverb_on);
 	ClassDB::bind_method(D_METHOD("set_baked_reverb_on", "p_on"), &SteamAudioPlayer::set_baked_reverb_on);
 
@@ -480,6 +483,28 @@ float SteamAudioPlayer::get_path_vis_range() { return cfg.path_vis_range; }
 void SteamAudioPlayer::set_path_vis_range(float p_v) { cfg.path_vis_range = p_v; cfg_dirty.store(true); }
 bool SteamAudioPlayer::is_path_active() {
 	return is_local_state_init.load() && local_state.path_active.load();
+}
+
+float SteamAudioPlayer::get_occlusion_level() {
+	if (!is_local_state_init.load()) {
+		return 0.0f;
+	}
+	return local_state.direct_outputs.occlusion;
+}
+
+float SteamAudioPlayer::get_transmission_level() {
+	if (!is_local_state_init.load()) {
+		return 0.0f;
+	}
+	const float *t = local_state.direct_outputs.transmission;
+	return (t[0] + t[1] + t[2]) / 3.0f;
+}
+
+float SteamAudioPlayer::get_distance_attenuation_level() {
+	if (!is_local_state_init.load()) {
+		return 0.0f;
+	}
+	return local_state.direct_outputs.distanceAttenuation;
 }
 
 float SteamAudioPlayer::get_path_level() {
