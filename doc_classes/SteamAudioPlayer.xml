@@ -54,8 +54,8 @@
 		<member name="ambisonics_order" type="int" setter="set_ambisonics_order" getter="get_ambisonics_order" default="1">
 			See [url=https://valvesoftware.github.io/steam-audio/doc/capi/ambisonics-encode-effect.html#_CPPv4N31IPLAmbisonicsEncodeEffectParams5orderE]IPLAmbisonicsEncodeEffectParams.order[/url].
 		</member>
-		<member name="distance_attenuation" type="bool" setter="set_dist_attn_on" getter="is_dist_attn_on" default="false">
-            Whether SteamAudio distance attenuation is enabled. Keep in mind that this is disabled by default, and enabling it will disable Godot's built-in attenuation, which you can only re-enable when you disable this.
+		<member name="distance_attenuation" type="bool" setter="set_dist_attn_on" getter="is_dist_attn_on" default="true">
+			Whether Steam Audio's distance attenuation is enabled. On by default: a 3D source that does not get quieter with distance is rarely what anyone wants. Steam Audio's curve replaces Godot's rather than stacking with it, so enabling this disables the node's own [code]attenuation_model[/code]; turn it off to use Godot's curve instead.
 		</member>
 		<member name="max_reflection_distance" type="float" setter="set_max_reflection_distance" getter="get_max_reflection_distance" default="10000.0">
             The maximum distance from the listener at which reflection simulation is run for this audio source. Keep in mind that this does not disable reflection if it has already been simulated, it just doesn't update the effect.
@@ -77,8 +77,9 @@
 			Take reflections from the reverb baked into a [SteamAudioProbeBatch] instead of simulating them. Much cheaper, but it does not follow moving geometry. Needs [member reflection] on and a batch baked with [member SteamAudioProbeBatch.reverb_bake].
 			Baked reverb describes the room the [i]listener[/i] is in, not the room the source is in, so it is sent in at the gain the source's direct path has: a source you cannot hear does not excite it. Expect it to sound like the space around you rather than the space around the source.
 		</member>
-		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="false">
+		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="true">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.
+			On by default, and free until a probe batch with baked pathing exists: with no probes the simulator skips the source entirely. Occlusion alone has no diffraction model, so without this a source behind cover drops to whatever leaks through the material, and the level swings as the listener moves or turns.
 		</member>
 		<member name="pathing_ambisonics_order" type="int" setter="set_pathing_order" getter="get_pathing_order" default="1">
 			Ambisonic order used to place the paths in space. Clamped to [member SteamAudioConfig.max_ambisonics_order].

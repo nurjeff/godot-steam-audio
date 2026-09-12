@@ -479,12 +479,29 @@ bool SteamAudioServer::rebuild_probe_batch(SteamAudioProbeBatch *batch, const St
 		}
 		iplSimulatorRemoveProbeBatch(self->global_state.sim, batch->get_batch());
 	}
+	{
+		// It may still be queued from entering the tree this frame. This build supersedes that
+		// one, so drop it from the queue rather than building the same batch twice.
+		std::lock_guard<std::mutex> lock(self->scene_mux);
+		auto pending = std::find(self->pending_probe_batches.begin(), self->pending_probe_batches.end(), batch);
+		if (pending != self->pending_probe_batches.end()) {
+			self->pending_probe_batches.erase(pending);
+		}
+	}
 	bool ok = batch->rebuild(path);
-	if (was_registered) {
+	// Registering here as well as on ready. With prepare_on_ready off the batch was never
+	// registered, so baking it produced real probes, a real file and a real probe count that
+	// the simulator could not see: identical in effect to having no probes at all.
+	if (was_registered || batch->is_inside_tree()) {
 		if (ok && batch->get_batch() != nullptr) {
+			if (!was_registered) {
+				self->probe_batches.push_back(batch);
+			}
 			iplSimulatorAddProbeBatch(self->global_state.sim, batch->get_batch());
-		} else {
+			batch->mark_registered(true);
+		} else if (was_registered) {
 			self->probe_batches.erase(std::find(self->probe_batches.begin(), self->probe_batches.end(), batch));
+			batch->mark_registered(false);
 		}
 		iplSimulatorCommit(self->global_state.sim);
 	}

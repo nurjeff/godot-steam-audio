@@ -277,6 +277,12 @@ bool SteamAudioProbeBatch::bake_internal() {
 	if (save_after_bake && !data_path.is_empty()) {
 		save_data(data_path);
 	}
+	if (data_path.is_empty()) {
+		UtilityFunctions::push_warning(vformat(
+				"[godot-steam-audio] %s: baked %d probes at runtime in %d ms. Set data_path and "
+				"save_after_bake to bake once and load the result, instead of paying this on every launch.",
+				get_name(), probe_count, int(took)));
+	}
 	emit_signal("baked", probe_count);
 	return true;
 }

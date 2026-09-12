@@ -322,8 +322,14 @@ void SteamAudioPlayer::process_internal(double delta) {
 		set_panning_strength(0.0f);
 	}
 	if (cfg.is_dist_attn_on && get_attenuation_model() != ATTENUATION_DISABLED) {
-		if (!has_warned_attenuation) {
-			UtilityFunctions::push_warning("You cannot enable Godot's and SteamAudio's distance attenuation features at the same time. Disable SteamAudio's attenuation before adjusting Godot's.");
+		// Steam Audio's curve replaces Godot's rather than stacking with it. That is now the
+		// default, so only speak up when an author's deliberate choice is being overridden.
+		if (!has_warned_attenuation && get_attenuation_model() != ATTENUATION_INVERSE_DISTANCE) {
+			UtilityFunctions::push_warning(vformat(
+					"[godot-steam-audio] %s: Steam Audio's distance attenuation replaces Godot's, so the "
+					"attenuation model set on this node is being disabled. Turn off distance_attenuation "
+					"to use Godot's curve instead.",
+					get_name()));
 			has_warned_attenuation = true;
 		}
 		set_attenuation_model(ATTENUATION_DISABLED);

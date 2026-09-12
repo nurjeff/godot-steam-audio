@@ -18,8 +18,25 @@ scene behind the first time a level is unloaded.
 
 Added here: an editor menu that tags a scene's geometry and validates the setup, an OBJ dump of the
 scene the simulation actually traces, sound pathing and baked reverb through `SteamAudioProbeBatch`,
-and reverb that rings out after a source stops. Each fix has a reproduction and a measurement in the
-consuming project's `PROBLEMS.md`.
+and reverb that rings out after a source stops. Each fix has a reproduction and a measurement in its
+commit message.
+
+Defaults differ from upstream, chosen so that a scene which just drops in geometry, a source and a
+probe volume sounds right without touching a property:
+
+- `distance_attenuation` is on. A 3D source that does not get quieter with distance is rarely the
+  intent, and Steam Audio's curve replaces Godot's rather than stacking with it.
+- `pathing` is on. It costs nothing until a `SteamAudioProbeBatch` with baked paths exists, because
+  the simulator skips sources it has no probes for. Once probes exist it is the difference between a
+  source that muffles behind cover and one that falls off a cliff: occlusion has no diffraction
+  model, so on its own a wall takes roughly 60 dB and the level lurches as the listener moves or
+  turns. With pathing that same wall costs about 13 dB and holds steady.
+
+`SteamAudioProbeBatch` now also registers itself with the simulator when you bake it directly, not
+only when `prepare_on_ready` is set. Baking an unregistered batch used to produce real probes, a real
+file and a real probe count that the simulator never saw, which is indistinguishable from having no
+probes at all. It warns, too, when it bakes at run time with no `data_path`, since that repeats the
+whole bake on every launch.
 
 Windows and Linux x86-64 are built and exercised; Android, macOS and iOS come from CI and are
 unverified. Single listener only.

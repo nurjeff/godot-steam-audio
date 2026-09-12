@@ -20,32 +20,37 @@ private:
 	// The authored settings. process_internal copies them into the local state whenever a setter
 	// marks them dirty, which is what makes the properties adjustable at runtime.
 	SteamAudioSourceConfig cfg{
-		4.0f,
-		32,
-		16,
-		0.0f,
-		1,
-		10000.0f,
-		false,
-		false,
-		0.9,
-		0.7,
-		0.5,
-		IPLAirAbsorptionModelType::IPL_AIRABSORPTIONTYPE_DEFAULT,
-		true,
-		true,
-		false,
-		IPLTransmissionType::IPL_TRANSMISSIONTYPE_FREQDEPENDENT,
-		false,
-		0.0f,
-		1.0f,
-		false,
-		1,
-		1.0f,
-		0.1f,
-		50.0f,
-		true,
-		false
+		4.0f, // occ_radius
+		32, // occ_samples
+		16, // transm_rays
+		0.0f, // min_attn_dist
+		1, // ambisonics_order
+		10000.0f, // max_refl_dist
+		// A 3D source that does not get quieter with distance is nobody's intent. Turning this
+		// on switches Godot's own attenuation off, so the two never stack.
+		true, // is_dist_attn_on
+		false, // is_air_absorp_on
+		0.9, // air_absorption_low
+		0.7, // air_absorption_mid
+		0.5, // air_absorption_high
+		IPLAirAbsorptionModelType::IPL_AIRABSORPTIONTYPE_DEFAULT, // air_absorption_model_type
+		true, // is_ambisonics_on
+		true, // is_occlusion_on
+		false, // is_reflection_on
+		IPLTransmissionType::IPL_TRANSMISSIONTYPE_FREQDEPENDENT, // transmission_type
+		false, // is_directivity_on
+		0.0f, // dipole_weight
+		1.0f, // dipole_power
+		// Free until a probe batch exists: with no baked paths the simulator skips this source
+		// entirely. Once probes are baked it is what keeps an occluded source from dropping off
+		// a cliff, so defaulting it off meant baking probes and hearing no difference.
+		true, // is_pathing_on
+		1, // pathing_order
+		1.0f, // path_vis_radius
+		0.1f, // path_vis_threshold
+		50.0f, // path_vis_range
+		true, // path_validation
+		false // is_baked_reverb_on
 	};
 
 	LocalSteamAudioState local_state;
