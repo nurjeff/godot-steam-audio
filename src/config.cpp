@@ -86,9 +86,6 @@ PackedStringArray SteamAudioConfig::_get_configuration_warnings() const {
 	if (count_nodes_of_class_in_scene(this, "SteamAudioConfig") > 1) {
 		res.push_back("More than one SteamAudioConfig in this scene. Only the first to load is used.");
 	}
-	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") == 0) {
-		res.push_back("No SteamAudioListener in this scene. Add one, usually under the Camera3D.");
-	}
 	if (scene_type == IPL_SCENETYPE_EMBREE) {
 		res.push_back("Embree traces faster, but Steam Audio leaves stale geometry behind when acoustic "
 					  "geometry is freed. Only use it if the acoustic scene is built once and never torn down.");

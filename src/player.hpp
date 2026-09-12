@@ -60,7 +60,6 @@ private:
 	std::atomic<bool> is_local_state_init;
 	std::atomic<bool> can_load_local_state;
 	std::atomic<bool> cfg_dirty{false};
-	bool has_warned_panning = false;
 	bool has_warned_attenuation = false;
 
 	void init_local_state();

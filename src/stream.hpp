@@ -70,6 +70,8 @@ public:
 
 	void set_stream(Ref<AudioStream> p_stream);
 	Ref<AudioStreamPlayback> get_stream_playback();
+	// Drops the inner stream and its playback. Called when the player is being destroyed.
+	void release_inner();
 	// Stop pulling from the source but keep mixing until the effects have nothing left, so the
 	// reverb of a sound that ends rings out instead of being cut with it.
 	void begin_tail() { tail_requested.store(true); }

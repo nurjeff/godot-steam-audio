@@ -32,6 +32,13 @@ probe volume sounds right without touching a property:
   model, so on its own a wall takes roughly 60 dB and the level lurches as the listener moves or
   turns. With pathing that same wall costs about 13 dB and holds steady.
 
+Configuration warnings only report what a single scene can actually decide. Whether a config or
+a listener exists somewhere is not that: a player usually lives in an avatar scene instanced at
+run time, and the environment is often built in code. Those are now reported once at run time,
+when a source is genuinely waiting on one, instead of on every sub-scene. Warnings about panning
+strength and the attenuation filter are gone too, because this node overrides both itself, so
+they fired on every untouched player and said nothing actionable.
+
 `SteamAudioProbeBatch` now also registers itself with the simulator when you bake it directly, not
 only when `prepare_on_ready` is set. Baking an unregistered batch used to produce real probes, a real
 file and a real probe count that the simulator never saw, which is indistinguishable from having no

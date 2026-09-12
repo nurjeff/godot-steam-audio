@@ -269,6 +269,23 @@ void SteamAudioPlayer::_notification(int p_what) {
 		case NOTIFICATION_PROCESS:
 			process_internal(get_process_delta_time());
 			break;
+		case NOTIFICATION_PREDELETE:
+			// Godot clears the resource cache before tearing down the audio server, so a
+			// playback still holding the audio file is reported as a resource still in use at
+			// exit. Predelete rather than exit-tree: a node that leaves and re-enters the tree
+			// keeps its stream.
+			// has_stream_playback rather than is_playing: by predelete the player has already
+			// been deactivated, yet the audio server can still hold the playback, and asking an
+			// inactive player for its playback is an error.
+			if (has_stream_playback()) {
+				if (auto playback = dynamic_cast<SteamAudioStreamPlayback *>(get_stream_playback().ptr())) {
+					playback->release_inner();
+				}
+			}
+			if (auto outer = dynamic_cast<SteamAudioStream *>(get_stream().ptr())) {
+				outer->set_stream(Ref<AudioStream>());
+			}
+			break;
 	}
 }
 
@@ -315,10 +332,8 @@ void SteamAudioPlayer::ready_internal() {
 
 void SteamAudioPlayer::process_internal(double delta) {
 	if (get_panning_strength() > 0.0f) {
-		if (!has_warned_panning) {
-			UtilityFunctions::push_warning("Panning strength is always zero on SteamAudioPlayer. You can control panning by enabling or disabling ambisonics.");
-			has_warned_panning = true;
-		}
+		// Godot defaults this to 1.0 and Steam Audio does its own panning, so this is simply
+		// taken over rather than reported: warning about it fired on every untouched node.
 		set_panning_strength(0.0f);
 	}
 	if (cfg.is_dist_attn_on && get_attenuation_model() != ATTENUATION_DISABLED) {
@@ -498,26 +513,15 @@ void SteamAudioPlayer::set_ambisonics_on(bool p_ambisonics_on) { cfg.is_ambisoni
 PackedStringArray SteamAudioPlayer::_get_configuration_warnings() const {
 	PackedStringArray res;
 
-	if (count_nodes_of_class_in_scene(this, "SteamAudioConfig") == 0) {
-		res.push_back("No SteamAudioConfig in this scene. Steam Audio will not run without exactly one.");
-	}
-	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") == 0) {
-		res.push_back("No SteamAudioListener in this scene. Add one, usually under the Camera3D.");
-	}
 	if (cfg.ambisonics_order > SteamAudioConfig::max_ambisonics_order) {
 		res.push_back("Ambisonics order exceeds the maximum set in SteamAudioConfig, and will be clamped at runtime.");
 	}
 	if (cfg.occ_samples > SteamAudioConfig::max_num_occ_samples) {
 		res.push_back("Occlusion samples exceed the maximum set in SteamAudioConfig, and will be clamped at runtime.");
 	}
-	if (cfg.is_dist_attn_on && get_attenuation_model() != ATTENUATION_DISABLED) {
-		res.push_back("Steam Audio distance attenuation is on, so Godot's attenuation model is ignored and will be set to Disabled.");
-	}
-	if (get_panning_strength() > 0.0f) {
-		res.push_back("Panning strength is ignored on a SteamAudioPlayer; use the ambisonics settings instead.");
-	}
-	if (get_attenuation_filter_cutoff_hz() < 20500.0f) {
-		res.push_back("Godot's attenuation filter dampens everything above its cutoff. Steam Audio models air absorption itself, so this is set to 20500 at runtime.");
+	if (cfg.is_dist_attn_on && get_attenuation_model() != ATTENUATION_DISABLED
+			&& get_attenuation_model() != ATTENUATION_INVERSE_DISTANCE) {
+		res.push_back("Steam Audio distance attenuation is on, so the attenuation model chosen here is ignored and set to Disabled at runtime. Turn distance_attenuation off to use Godot's curve.");
 	}
 
 	return res;

@@ -71,9 +71,6 @@ PackedStringArray SteamAudioListener::_get_configuration_warnings() const {
 	if (count_nodes_of_class_in_scene(this, "SteamAudioListener") > 1) {
 		res.push_back("More than one SteamAudioListener in this scene. Only one is used, and which one wins is not defined.");
 	}
-	if (count_nodes_of_class_in_scene(this, "SteamAudioConfig") == 0) {
-		res.push_back("No SteamAudioConfig in this scene. Steam Audio will not run without exactly one.");
-	}
 
 	if (refl_ambisonics_order > SteamAudioConfig::max_ambisonics_order) {
 		res.push_back("Ambisonics order exceeds maximum set in SteamAudioConfig. \

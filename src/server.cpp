@@ -20,12 +20,27 @@ void SteamAudioServer::tick() {
 		return;
 	}
 	if (!self->is_global_state_init.load()) {
+		// Whether a config or listener exists cannot be answered from an edited scene, so it is
+		// answered here instead, once, when a source is actually waiting on one.
+		if (!self->has_warned_no_config && !self->local_states.empty()) {
+			self->has_warned_no_config = true;
+			UtilityFunctions::push_warning(
+					"[godot-steam-audio] A SteamAudioPlayer is in the tree but Steam Audio has not started. "
+					"Add exactly one SteamAudioConfig to the scene tree.");
+		}
 		return;
 	}
 	std::lock_guard<std::mutex> tick_lock(self->tick_mux);
 	if (self->listener == nullptr || !self->listener->is_inside_tree()) {
+		if (!self->has_warned_no_listener && !self->local_states.empty()) {
+			self->has_warned_no_listener = true;
+			UtilityFunctions::push_warning(
+					"[godot-steam-audio] A SteamAudioPlayer is playing but there is no SteamAudioListener in "
+					"the tree, so nothing is being simulated. Add one, usually under the Camera3D.");
+		}
 		return;
 	}
+	self->has_warned_no_listener = false;
 
 	SteamAudio::log(SteamAudio::log_debug, "tick");
 

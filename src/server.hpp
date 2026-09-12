@@ -39,6 +39,8 @@ private:
 	std::condition_variable cv;
 	std::condition_variable refl_done_cv;
 	bool has_warned_refl_src_limit = false;
+	bool has_warned_no_config = false;
+	bool has_warned_no_listener = false;
 
 	// Latest pending transform per dynamic mesh. Applying these touches the scene, so they are
 	// queued on the game thread and flushed in tick() instead of being applied immediately.

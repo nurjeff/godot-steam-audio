@@ -409,6 +409,12 @@ void SteamAudioStreamPlayback::_start(double from_pos) {
 	is_active.store(true);
 }
 
+void SteamAudioStreamPlayback::release_inner() {
+	_stop();
+	stream_playback.unref();
+	stream.unref();
+}
+
 void SteamAudioStreamPlayback::_stop() {
 	is_active.store(false);
 	tail_active = false;
