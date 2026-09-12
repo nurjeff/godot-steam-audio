@@ -58,6 +58,19 @@ static float baked_reverb_send(const LocalSteamAudioState *ls) {
 	return std::clamp(send, 0.0f, 1.0f);
 }
 
+// A path's EQ describes what bending around obstacles costs, not what travelling the distance
+// costs, and its SH coefficients come back at much the same magnitude however far the route ran.
+// Measured across a two-storey house, the hall, the room directly above the source and the
+// landing all read within 0.8 dB of each other. Send the path in at the distance gain the source
+// already has, so a room away is quieter than next door. Occlusion is deliberately left out:
+// routing around the occluder is the whole point of a path.
+static float path_send(const LocalSteamAudioState *ls) {
+	if (!ls->cfg.is_dist_attn_on) {
+		return 1.0f;
+	}
+	return std::clamp(ls->direct_outputs.distanceAttenuation, 0.0f, 1.0f);
+}
+
 static void scale_buffer(IPLAudioBuffer &buffer, float gain) {
 	for (int i = 0; i < buffer.numChannels; i++) {
 		for (int j = 0; j < buffer.numSamples; j++) {
@@ -240,6 +253,7 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 		IPLAmbisonicsDecodeEffectParams path_dec_params = dec_params;
 		path_dec_params.order = ls->cfg.pathing_order;
 		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &path_dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		scale_buffer(ls->bufs.path_out, path_send(ls));
 		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
 	}
 
@@ -337,6 +351,7 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 		IPLAmbisonicsDecodeEffectParams path_dec_params = dec_params;
 		path_dec_params.order = ls->cfg.pathing_order;
 		iplAmbisonicsDecodeEffectApply(ls->fx.path_dec, &path_dec_params, &ls->bufs.path_ambi, &ls->bufs.path_out);
+		scale_buffer(ls->bufs.path_out, path_send(ls));
 		iplAudioBufferMix(gs->ctx, &ls->bufs.path_out, &ls->bufs.out);
 	}
 

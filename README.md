@@ -29,8 +29,8 @@ probe volume sounds right without touching a property:
 - `pathing` is on. It costs nothing until a `SteamAudioProbeBatch` with baked paths exists, because
   the simulator skips sources it has no probes for. Once probes exist it is the difference between a
   source that muffles behind cover and one that falls off a cliff: occlusion has no diffraction
-  model, so on its own a wall takes roughly 60 dB and the level lurches as the listener moves or
-  turns. With pathing that same wall costs about 13 dB and holds steady.
+  model, so on its own a 4 m wall in open air takes 59.5 dB and the level lurches by up to 21 dB as
+  the listener merely turns on the spot. With pathing that wall costs 35.2 dB and holds steady.
 
 Configuration warnings only report what a single scene can actually decide. Whether a config or
 a listener exists somewhere is not that: a player usually lives in an avatar scene instanced at
