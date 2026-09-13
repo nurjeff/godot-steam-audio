@@ -203,6 +203,8 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 
 		iplAudioBufferMix(gs->ctx, &ls->bufs.in, &ls->bufs.direct);
 	}
+	// Only the direct path; reflections and paths are fed from the dry input.
+	scale_buffer(ls->bufs.direct, ls->cfg.direct_mix);
 
 	IPLAmbisonicsDecodeEffectParams dec_params{};
 	dec_params.orientation = gs->listener_coords;
@@ -337,6 +339,7 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 	if (iplDirectEffectGetTail(ls->fx.direct, &ls->bufs.direct) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
 		remaining = true;
 	}
+	scale_buffer(ls->bufs.direct, ls->cfg.direct_mix);
 	if (ls->cfg.is_ambisonics_on) {
 		IPLAmbisonicsEncodeEffectParams enc_params{};
 		enc_params.direction = ipl_vec3_from(ls->dir_to_listener);

@@ -81,6 +81,9 @@
 		<member name="reflection_mix" type="float" setter="set_reflection_mix" getter="get_reflection_mix" default="1.0">
 			Gain applied to simulated (and baked) reflections before they are mixed with the direct sound. 1.0 is the physically simulated level, which for speech usually reads as too much reverb; 0.3 to 0.5 keeps voices intelligible while rooms still sound like rooms. Applies per source.
 		</member>
+		<member name="direct_mix" type="float" setter="set_direct_mix" getter="get_direct_mix" default="1.0">
+			Gain on the direct path only; reflections and pathing are fed from the dry input and are unaffected. 0 leaves just what the room adds, which is how a listener hears their own voice's reverb without hearing their own voice.
+		</member>
 		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="true">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.
 			On by default, and free until a probe batch with baked pathing exists: with no probes the simulator skips the source entirely. Occlusion alone has no diffraction model, so without this a source behind cover drops to whatever leaks through the material, and the level swings as the listener moves or turns.

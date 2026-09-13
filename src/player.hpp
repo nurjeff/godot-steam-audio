@@ -65,7 +65,9 @@ private:
 		false, // is_baked_reverb_on
 		// Simulated reflections arrive at their physically correct level, and for speech that
 		// reads as too much: the Unity and FMOD integrations expose the same knob for it.
-		1.0f // reflection_mix
+		1.0f, // reflection_mix
+		// Zero leaves only what the room adds: a listener's own voice as reflections, for one.
+		1.0f // direct_mix
 	};
 
 	LocalSteamAudioState local_state;
@@ -150,6 +152,8 @@ public:
 	void set_baked_reverb_on(bool p_on);
 	float get_reflection_mix();
 	void set_reflection_mix(float p_reflection_mix);
+	float get_direct_mix();
+	void set_direct_mix(float p_direct_mix);
 
 	// Whether the simulation found a route to the listener this frame, and how much energy it
 	// carries. Read-only; the point is to be able to see pathing working.

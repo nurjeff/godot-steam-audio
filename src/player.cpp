@@ -73,6 +73,8 @@ void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_baked_reverb_on", "p_on"), &SteamAudioPlayer::set_baked_reverb_on);
 	ClassDB::bind_method(D_METHOD("get_reflection_mix"), &SteamAudioPlayer::get_reflection_mix);
 	ClassDB::bind_method(D_METHOD("set_reflection_mix", "p_reflection_mix"), &SteamAudioPlayer::set_reflection_mix);
+	ClassDB::bind_method(D_METHOD("get_direct_mix"), &SteamAudioPlayer::get_direct_mix);
+	ClassDB::bind_method(D_METHOD("set_direct_mix", "p_direct_mix"), &SteamAudioPlayer::set_direct_mix);
 
 	ADD_GROUP("Distance Attenuation", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "distance_attenuation"), "set_dist_attn_on", "is_dist_attn_on");
@@ -103,6 +105,7 @@ void SteamAudioPlayer::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_reflection_distance", PROPERTY_HINT_RANGE, "0.0,20000.0,0.1"), "set_max_reflection_distance", "get_max_reflection_distance");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "baked_reverb"), "set_baked_reverb_on", "is_baked_reverb_on");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "reflection_mix", PROPERTY_HINT_RANGE, "0.0,2.0,0.01"), "set_reflection_mix", "get_reflection_mix");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "direct_mix", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_direct_mix", "get_direct_mix");
 
 	ADD_GROUP("Pathing", "pathing_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pathing"), "set_pathing_on", "is_pathing_on");
@@ -526,6 +529,8 @@ bool SteamAudioPlayer::is_baked_reverb_on() { return cfg.is_baked_reverb_on; }
 void SteamAudioPlayer::set_baked_reverb_on(bool p_on) { cfg.is_baked_reverb_on = p_on; cfg_dirty.store(true); }
 float SteamAudioPlayer::get_reflection_mix() { return cfg.reflection_mix; }
 void SteamAudioPlayer::set_reflection_mix(float p_reflection_mix) { cfg.reflection_mix = CLAMP(p_reflection_mix, 0.0f, 2.0f); cfg_dirty.store(true); }
+float SteamAudioPlayer::get_direct_mix() { return cfg.direct_mix; }
+void SteamAudioPlayer::set_direct_mix(float p_direct_mix) { cfg.direct_mix = CLAMP(p_direct_mix, 0.0f, 1.0f); cfg_dirty.store(true); }
 
 IPLTransmissionType SteamAudioPlayer::get_transmission_type() { return cfg.transmission_type; }
 void SteamAudioPlayer::set_transmission_type(IPLTransmissionType p_transmission_type) { cfg.transmission_type = p_transmission_type; cfg_dirty.store(true); }
