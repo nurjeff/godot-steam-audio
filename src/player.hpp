@@ -62,7 +62,10 @@ private:
 		0.1f, // path_vis_threshold
 		50.0f, // path_vis_range
 		true, // path_validation
-		false // is_baked_reverb_on
+		false, // is_baked_reverb_on
+		// Simulated reflections arrive at their physically correct level, and for speech that
+		// reads as too much: the Unity and FMOD integrations expose the same knob for it.
+		1.0f // reflection_mix
 	};
 
 	LocalSteamAudioState local_state;
@@ -145,6 +148,8 @@ public:
 	void set_path_vis_range(float p_v);
 	bool is_baked_reverb_on();
 	void set_baked_reverb_on(bool p_on);
+	float get_reflection_mix();
+	void set_reflection_mix(float p_reflection_mix);
 
 	// Whether the simulation found a route to the listener this frame, and how much energy it
 	// carries. Read-only; the point is to be able to see pathing working.

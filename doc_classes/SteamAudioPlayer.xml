@@ -78,6 +78,9 @@
 			Take reflections from the reverb baked into a [SteamAudioProbeBatch] instead of simulating them. Much cheaper, but it does not follow moving geometry. Needs [member reflection] on and a batch baked with [member SteamAudioProbeBatch.reverb_bake].
 			Baked reverb describes the room the [i]listener[/i] is in, not the room the source is in, so it is sent in at the gain the source's direct path has: a source you cannot hear does not excite it. Expect it to sound like the space around you rather than the space around the source.
 		</member>
+		<member name="reflection_mix" type="float" setter="set_reflection_mix" getter="get_reflection_mix" default="1.0">
+			Gain applied to simulated (and baked) reflections before they are mixed with the direct sound. 1.0 is the physically simulated level, which for speech usually reads as too much reverb; 0.3 to 0.5 keeps voices intelligible while rooms still sound like rooms. Applies per source.
+		</member>
 		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="true">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.
 			On by default, and free until a probe batch with baked pathing exists: with no probes the simulator skips the source entirely. Occlusion alone has no diffraction model, so without this a source behind cover drops to whatever leaks through the material, and the level swings as the listener moves or turns.

@@ -76,6 +76,7 @@ struct SteamAudioSourceConfig {
 	float path_vis_range;
 	bool path_validation;
 	bool is_baked_reverb_on;
+	float reflection_mix;
 };
 
 struct SteamAudioEffects {

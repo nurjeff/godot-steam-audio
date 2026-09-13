@@ -71,6 +71,12 @@ static float path_send(const LocalSteamAudioState *ls) {
 	return std::clamp(ls->direct_outputs.distanceAttenuation, 0.0f, 1.0f);
 }
 
+// Baked reverb is sent at the direct path's gain; simulated reflections already carry their
+// own. Both are then scaled by the player's mix, which is a taste setting, not physics.
+static float reflection_send(const LocalSteamAudioState *ls) {
+	return (ls->cfg.is_baked_reverb_on ? baked_reverb_send(ls) : 1.0f) * ls->cfg.reflection_mix;
+}
+
 static void scale_buffer(IPLAudioBuffer &buffer, float gain) {
 	for (int i = 0; i < buffer.numChannels; i++) {
 		for (int j = 0; j < buffer.numSamples; j++) {
@@ -280,10 +286,7 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 		iplAmbisonicsDecodeEffectApply(
 				ls->fx.refl_dec, &refl_dec_params,
 				&ls->bufs.refl_ambi, &ls->bufs.refl_out);
-
-		if (ls->cfg.is_baked_reverb_on) {
-			scale_buffer(ls->bufs.refl_out, baked_reverb_send(ls));
-		}
+		scale_buffer(ls->bufs.refl_out, reflection_send(ls));
 		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
 	}
 	gs->refl_ir_lock.unlock();
@@ -362,9 +365,7 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 		IPLAmbisonicsDecodeEffectParams refl_dec_params = dec_params;
 		refl_dec_params.order = ls->last_refl_order;
 		iplAmbisonicsDecodeEffectApply(ls->fx.refl_dec, &refl_dec_params, &ls->bufs.refl_ambi, &ls->bufs.refl_out);
-		if (ls->cfg.is_baked_reverb_on) {
-			scale_buffer(ls->bufs.refl_out, baked_reverb_send(ls));
-		}
+		scale_buffer(ls->bufs.refl_out, reflection_send(ls));
 		iplAudioBufferMix(gs->ctx, &ls->bufs.refl_out, &ls->bufs.out);
 	}
 
