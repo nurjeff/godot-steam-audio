@@ -67,7 +67,13 @@ private:
 		// reads as too much: the Unity and FMOD integrations expose the same knob for it.
 		1.0f, // reflection_mix
 		// Zero leaves only what the room adds: a listener's own voice as reflections, for one.
-		1.0f // direct_mix
+		1.0f, // direct_mix
+		// Render this source's reflections as parametric reverb: a diffuse tail from the room's
+		// decay times, with no discrete first reflections. For a source at the listener those are
+		// a clean copy of the sound a few milliseconds late, which reads as playback, not a room.
+		// Needs SteamAudioConfig.reflection_type Hybrid or Parametric, and is read when the
+		// source enters the tree.
+		false // reflection_parametric
 	};
 
 	LocalSteamAudioState local_state;
@@ -154,6 +160,8 @@ public:
 	void set_reflection_mix(float p_reflection_mix);
 	float get_direct_mix();
 	void set_direct_mix(float p_direct_mix);
+	bool is_reflection_parametric();
+	void set_reflection_parametric(bool p_on);
 
 	// Whether the simulation found a route to the listener this frame, and how much energy it
 	// carries. Read-only; the point is to be able to see pathing working.

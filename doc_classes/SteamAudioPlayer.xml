@@ -84,6 +84,9 @@
 		<member name="direct_mix" type="float" setter="set_direct_mix" getter="get_direct_mix" default="1.0">
 			Gain on the direct path only; reflections and pathing are fed from the dry input and are unaffected. 0 leaves just what the room adds, which is how a listener hears their own voice's reverb without hearing their own voice.
 		</member>
+		<member name="reflection_parametric" type="bool" setter="set_reflection_parametric" getter="is_reflection_parametric" default="false">
+			Render this source's reflections as parametric reverb: a diffuse tail synthesised from the room's per-band decay times, with no discrete early reflections. For a source at the listener - a player hearing their own voice as the room's response - the early reflections are a clean copy of the voice a few milliseconds late and read as playback; the parametric tail reads as the room. Requires [member SteamAudioConfig.reflection_type] Hybrid or Parametric (ignored under Convolution), and is read when the source enters the tree.
+		</member>
 		<member name="pathing" type="bool" setter="set_pathing_on" getter="is_pathing_on" default="true">
 			Play back the route sound takes around corners, using the paths baked into a [SteamAudioProbeBatch]. This is what makes an occluded source audible through a doorway instead of only muffled through the wall.
 			On by default, and free until a probe batch with baked pathing exists: with no probes the simulator skips the source entirely. Occlusion alone has no diffraction model, so without this a source behind cover drops to whatever leaks through the material, and the level swings as the listener moves or turns.

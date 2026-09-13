@@ -230,7 +230,8 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 	// Parametric reverb carries decay times rather than an impulse response. Out of reflection
 	// range the simulator stops updating this source, so reusing its last result would both cost
 	// CPU and freeze the reverb in place.
-	const bool needs_ir = SteamAudioConfig::reflection_type != IPL_REFLECTIONEFFECTTYPE_PARAMETRIC;
+	const IPLReflectionEffectType refl_type = effective_reflection_type(ls->cfg, SteamAudioConfig::reflection_type);
+	const bool needs_ir = refl_type != IPL_REFLECTIONEFFECTTYPE_PARAMETRIC;
 	const bool wants_paths = ls->cfg.is_pathing_on && ls->path_active.load();
 	const bool wants_refl = ls->cfg.is_reflection_on && ls->refl_in_range.load();
 	if (wants_paths || wants_refl) {
@@ -271,7 +272,7 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 		// numChannels and irSize describe the impulse response the simulator actually produced,
 		// from the listener's reflection order and duration. Substituting the source's own
 		// settings here convolved past the end of it whenever the two disagreed.
-		ls->refl_outputs.type = SteamAudioConfig::reflection_type;
+		ls->refl_outputs.type = refl_type;
 		if (!needs_ir) {
 			// Parametric reverb is synthesised from decay times, so the simulator reports no
 			// impulse response dimensions and the effect needs to be told what to render into.

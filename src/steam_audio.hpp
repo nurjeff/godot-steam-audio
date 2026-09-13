@@ -78,7 +78,16 @@ struct SteamAudioSourceConfig {
 	bool is_baked_reverb_on;
 	float reflection_mix;
 	float direct_mix;
+	bool reflection_parametric;
 };
+
+// Parametric reverb needs the decay times only a Parametric or Hybrid simulator computes, so
+// under a Convolution config the request is ignored rather than left silent.
+inline IPLReflectionEffectType effective_reflection_type(const SteamAudioSourceConfig &cfg, IPLReflectionEffectType global) {
+	return cfg.reflection_parametric && global != IPL_REFLECTIONEFFECTTYPE_CONVOLUTION
+			? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC
+			: global;
+}
 
 struct SteamAudioEffects {
 	IPLDirectEffect direct;
