@@ -77,6 +77,7 @@ void SteamAudioPlayer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_direct_mix", "p_direct_mix"), &SteamAudioPlayer::set_direct_mix);
 	ClassDB::bind_method(D_METHOD("is_reflection_parametric"), &SteamAudioPlayer::is_reflection_parametric);
 	ClassDB::bind_method(D_METHOD("set_reflection_parametric", "p_on"), &SteamAudioPlayer::set_reflection_parametric);
+	ClassDB::bind_method(D_METHOD("get_reverb_time"), &SteamAudioPlayer::get_reverb_time);
 
 	ADD_GROUP("Distance Attenuation", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "distance_attenuation"), "set_dist_attn_on", "is_dist_attn_on");
@@ -535,6 +536,7 @@ void SteamAudioPlayer::set_reflection_mix(float p_reflection_mix) { cfg.reflecti
 float SteamAudioPlayer::get_direct_mix() { return cfg.direct_mix; }
 void SteamAudioPlayer::set_direct_mix(float p_direct_mix) { cfg.direct_mix = CLAMP(p_direct_mix, 0.0f, 1.0f); cfg_dirty.store(true); }
 bool SteamAudioPlayer::is_reflection_parametric() { return cfg.reflection_parametric; }
+float SteamAudioPlayer::get_reverb_time() { return is_local_state_init.load() ? local_state.reverb_time.load() : 0.0f; }
 void SteamAudioPlayer::set_reflection_parametric(bool p_on) { cfg.reflection_parametric = p_on; cfg_dirty.store(true); }
 
 IPLTransmissionType SteamAudioPlayer::get_transmission_type() { return cfg.transmission_type; }

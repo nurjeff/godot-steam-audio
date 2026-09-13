@@ -162,6 +162,7 @@ public:
 	void set_direct_mix(float p_direct_mix);
 	bool is_reflection_parametric();
 	void set_reflection_parametric(bool p_on);
+	float get_reverb_time();
 
 	// Whether the simulation found a route to the listener this frame, and how much energy it
 	// carries. Read-only; the point is to be able to see pathing working.

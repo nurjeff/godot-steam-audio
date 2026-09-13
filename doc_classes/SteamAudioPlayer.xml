@@ -8,6 +8,12 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+		<method name="get_reverb_time">
+			<return type="float" />
+			<description>
+				Mid-band reverberation time (RT60, seconds) the simulation last computed for this source's position - how much room there is around it. Zero in the open, or under a Convolution [member SteamAudioConfig.reflection_type], which does not compute it.
+			</description>
+		</method>
 		<method name="stop_ringing_out">
 			<return type="void" />
 			<description>

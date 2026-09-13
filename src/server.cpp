@@ -178,6 +178,7 @@ void SteamAudioServer::tick() {
 			IPLSimulationOutputs outputs;
 			iplSourceGetOutputs(ls->src.src, IPL_SIMULATIONFLAGS_REFLECTIONS, &outputs);
 			ls->refl_outputs = outputs.reflections;
+			ls->reverb_time.store(outputs.reflections.reverbTimes[1]);
 			ls->refl_in_range.store(true);
 		}
 		global_state.refl_ir_lock.unlock();

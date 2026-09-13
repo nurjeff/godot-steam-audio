@@ -120,6 +120,9 @@ struct LocalSteamAudioState {
 	SteamAudioEffects fx;
 	SteamAudioSourceConfig cfg;
 	std::atomic<bool> refl_in_range{ false };
+	// Mid-band RT60 from the last reflection pass, for callers that want to know how much room
+	// there is. Only a Parametric or Hybrid simulator produces it; otherwise it stays zero.
+	std::atomic<float> reverb_time{ 0.0f };
 	std::shared_mutex mux;
 	// Pathing coefficients are owned by the simulator and rewritten every tick, so the game
 	// thread copies them here instead of handing the audio thread a pointer into that memory.
