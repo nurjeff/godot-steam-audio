@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/audio_stream_playback.hpp>
 #include <godot_cpp/templates/safe_refcount.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <unordered_set>
 #include <vector>
 
 using namespace godot;
@@ -31,7 +32,7 @@ public:
 	void set_stream(Ref<AudioStream> p_stream);
 	Ref<AudioStream> get_stream();
 
-	SteamAudioPlayer *parent = nullptr;
+	std::shared_ptr<SteamAudioPlayerLink> link;
 };
 
 class SteamAudioStreamPlayback : public AudioStreamPlayback {
@@ -39,6 +40,10 @@ class SteamAudioStreamPlayback : public AudioStreamPlayback {
 	friend class SteamAudioStream;
 
 private:
+	// The audio thread mixes the inner playback while the game thread swaps, stops or releases it.
+	// Everything below is touched under this lock; engine objects are made and dropped outside it,
+	// since the audio thread holds the driver's lock while it waits here.
+	std::mutex mux;
 	Ref<AudioStream> stream;
 	Ref<AudioStreamPlayback> stream_playback;
 
@@ -86,7 +91,17 @@ public:
 	void _stop() override;
 	bool _is_playing() const override;
 
-	SteamAudioPlayer *parent = nullptr;
+	std::shared_ptr<SteamAudioPlayerLink> link;
+
+	// At shutdown Godot frees an extension's classes before the audio server lets go of its
+	// playbacks, and the last release of one then reads the freed class. Called from the
+	// extension's first deinit, this keeps every live playback referenced past that release.
+	// The process reclaims them.
+	static void pin_for_shutdown();
+
+private:
+	static std::mutex live_mux;
+	static std::unordered_set<SteamAudioStreamPlayback *> live;
 };
 
 #endif

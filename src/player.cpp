@@ -128,6 +128,7 @@ void SteamAudioPlayer::_bind_methods() {
 SteamAudioPlayer::SteamAudioPlayer() {
 	is_local_state_init.store(false);
 	can_load_local_state.store(true);
+	link->player = this;
 
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return;
@@ -137,7 +138,7 @@ SteamAudioPlayer::SteamAudioPlayer() {
 	if (str == nullptr) {
 		Ref<SteamAudioStream> new_stream;
 		new_stream.instantiate();
-		new_stream->parent = this;
+		new_stream->link = link;
 		if (get_stream().ptr() != nullptr) {
 			new_stream->set_stream(get_stream());
 		}
@@ -146,7 +147,10 @@ SteamAudioPlayer::SteamAudioPlayer() {
 }
 SteamAudioPlayer::~SteamAudioPlayer() {
 	SteamAudio::log(SteamAudio::log_debug, "destroying player");
-	std::unique_lock lock(local_state.mux);
+	// Held for the whole teardown, so no block is mixing this player while its effects go, and a
+	// playback that takes it afterwards finds no player.
+	std::lock_guard<std::mutex> lock(link->mux);
+	link->player = nullptr;
 
 	// Unregister unconditionally and before anything else. The local state is registered by
 	// whichever thread first mixes this player, which can happen while this destructor runs,
@@ -168,41 +172,31 @@ SteamAudioPlayer::~SteamAudioPlayer() {
 	SteamAudioServer::get_singleton()->remove_source(local_state.src.src);
 	iplSourceRelease(&local_state.src.src);
 	iplDirectEffectRelease(&local_state.fx.direct);
+	iplBinauralEffectRelease(&local_state.fx.binaural);
 	iplReflectionEffectRelease(&local_state.fx.refl);
-	iplAmbisonicsDecodeEffectRelease(&local_state.fx.dec);
 	iplAmbisonicsDecodeEffectRelease(&local_state.fx.refl_dec);
-	iplAmbisonicsEncodeEffectRelease(&local_state.fx.enc);
+	iplPathEffectRelease(&local_state.fx.path);
+	iplAmbisonicsDecodeEffectRelease(&local_state.fx.path_dec);
 
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.in);
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.direct);
-	iplAudioBufferFree(gs->ctx, &local_state.bufs.ambi);
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.out);
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.mono);
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.refl_ambi);
 	iplAudioBufferFree(gs->ctx, &local_state.bufs.refl_out);
-
-	if (!pb.is_null()) {
-		auto playback = dynamic_cast<SteamAudioStreamPlayback *>(pb.ptr());
-		playback->parent = nullptr;
-	}
+	iplAudioBufferFree(gs->ctx, &local_state.bufs.path_ambi);
+	iplAudioBufferFree(gs->ctx, &local_state.bufs.path_out);
 }
 
+// Only ever called by a playback holding the link, which the destructor holds too.
 LocalSteamAudioState *SteamAudioPlayer::get_local_state() {
 	if (!can_load_local_state.load()) {
 		return nullptr;
 	}
 	if (!is_local_state_init.load()) {
-		// Taken because the destructor holds it for the whole teardown: either the state is
-		// initialized before this player starts going away, or this sees it is too late.
-		std::unique_lock lock(local_state.mux);
-		if (!can_load_local_state.load()) {
-			return nullptr;
-		}
-		if (!is_local_state_init.load()) {
-			init_local_state();
-		}
+		init_local_state();
 	}
-	return &local_state;
+	return is_local_state_init.load() ? &local_state : nullptr;
 }
 
 void SteamAudioPlayer::init_local_state() {
@@ -231,6 +225,10 @@ void SteamAudioPlayer::init_local_state() {
 	dir_effect_cfg.numChannels = 2;
 	handleErr(iplDirectEffectCreate(gs->ctx, &gs->audio_cfg, &dir_effect_cfg, &local_state.fx.direct));
 
+	IPLBinauralEffectSettings binaural_cfg{};
+	binaural_cfg.hrtf = gs->hrtf;
+	handleErr(iplBinauralEffectCreate(gs->ctx, &gs->audio_cfg, &binaural_cfg, &local_state.fx.binaural));
+
 	IPLReflectionEffectSettings refl_effect_cfg{};
 	refl_effect_cfg.type = effective_reflection_type(cfg, SteamAudioConfig::reflection_type);
 	refl_effect_cfg.irSize = int(SteamAudioConfig::max_refl_duration * float(gs->audio_cfg.samplingRate));
@@ -244,16 +242,11 @@ void SteamAudioPlayer::init_local_state() {
 	local_state.fx.path_dec = create_ambisonics_decode_effect(gs->ctx, gs->audio_cfg, gs->hrtf);
 	local_state.path_sh.assign(ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), 0.0f);
 
-	local_state.fx.dec = create_ambisonics_decode_effect(
-			gs->ctx, gs->audio_cfg, gs->hrtf);
 	local_state.fx.refl_dec = create_ambisonics_decode_effect(
 			gs->ctx, gs->audio_cfg, gs->hrtf);
-	local_state.fx.enc = create_ambisonics_encode_effect(
-			gs->ctx, gs->audio_cfg);
 
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.in));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.direct));
-	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.ambi));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 2, gs->audio_cfg.frameSize, &local_state.bufs.out));
 	handleErr(iplAudioBufferAllocate(gs->ctx, 1, gs->audio_cfg.frameSize, &local_state.bufs.mono));
 	handleErr(iplAudioBufferAllocate(gs->ctx, ambisonic_channels_from(SteamAudioConfig::max_ambisonics_order), gs->audio_cfg.frameSize, &local_state.bufs.refl_ambi));
@@ -329,7 +322,7 @@ void SteamAudioPlayer::ready_internal() {
 		}
 		set_stream(new_stream);
 		str = new_stream.ptr();
-		str->parent = this;
+		str->link = link;
 		if (is_autoplay_enabled()) {
 			play();
 		}
@@ -363,14 +356,10 @@ void SteamAudioPlayer::process_internal(double delta) {
 		set_attenuation_model(ATTENUATION_DISABLED);
 	}
 
-	if (is_playing() && !get_stream_playback().is_null()) {
-		pb = get_stream_playback();
-	}
-
 	// Sync cfg changes (e.g. runtime property toggles) into local_state.cfg.
 	// local_state.cfg is a copy made at init time, so setters must be reflected here.
 	if (is_local_state_init.load() && cfg_dirty.exchange(false)) {
-		std::unique_lock lock(local_state.mux);
+		std::lock_guard<std::mutex> lock(link->mux);
 		local_state.cfg = cfg;
 	}
 }

@@ -66,7 +66,9 @@ void SteamAudioServer::tick() {
 		}
 
 		Vector3 src_pos = ls->src.player->get_global_position();
-		ls->dir_to_listener = src_pos - self->listener->get_global_position();
+		const IPLCoordinateSpace3 &listener_coords = self->global_state.listener_coords;
+		ls->hrtf_direction = iplCalculateRelativeDirection(self->global_state.ctx, ipl_vec3_from(src_pos),
+				listener_coords.origin, listener_coords.ahead, listener_coords.up);
 
 		IPLDistanceAttenuationModel attn_model{};
 		attn_model.type = IPL_DISTANCEATTENUATIONTYPE_INVERSEDISTANCE;
@@ -718,6 +720,17 @@ void SteamAudioServer::add_source(IPLSource source) {
 void SteamAudioServer::remove_source(IPLSource source) {
 	if (!is_global_state_init.load()) {
 		return;
+	}
+	{
+		// A player can go before tick() has added its source, as a world loaded and freed in quick
+		// succession does. That source was never in the simulator, and adding it after its release
+		// crashed in iplSourceAdd.
+		std::lock_guard<std::mutex> lock(scene_mux);
+		auto pending = std::find(pending_sources_to_add.begin(), pending_sources_to_add.end(), source);
+		if (pending != pending_sources_to_add.end()) {
+			pending_sources_to_add.erase(pending);
+			return;
+		}
 	}
 	// The caller releases the source right after this, so the removal is committed here rather
 	// than deferred: a released source must not still be committed in the simulator.

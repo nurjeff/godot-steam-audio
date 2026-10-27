@@ -13,10 +13,6 @@ class SteamAudioPlayer : public AudioStreamPlayer3D {
 	GDCLASS(SteamAudioPlayer, AudioStreamPlayer3D);
 
 private:
-	// This ref is kept because at destruction we can't get the playback
-	// since the player has stopped (even though the playback still mixes...)
-	Ref<AudioStreamPlayback> pb;
-
 	// The authored settings. process_internal copies them into the local state whenever a setter
 	// marks them dirty, which is what makes the properties adjustable at runtime.
 	SteamAudioSourceConfig cfg{
@@ -77,6 +73,7 @@ private:
 	};
 
 	LocalSteamAudioState local_state;
+	std::shared_ptr<SteamAudioPlayerLink> link = std::make_shared<SteamAudioPlayerLink>();
 	std::atomic<bool> is_local_state_init;
 	std::atomic<bool> can_load_local_state;
 	std::atomic<bool> cfg_dirty{false};

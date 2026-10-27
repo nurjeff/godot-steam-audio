@@ -2,13 +2,19 @@
 #include "config.hpp"
 #include "phonon.h"
 #include "steam_audio.hpp"
+#include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/os.hpp>
 
 using namespace godot;
 
 IPLAudioSettings create_audio_cfg() {
-	int sample_rate = ProjectSettings::get_singleton()->get_setting("audio/driver/mix_rate");
+	// What the device runs at: the project setting is only a request, and WASAPI keeps the device's own
+	// rate. HRTFs and reverb built for 44.1 kHz and played at 48 kHz come out 9% short and pitched up.
+	int sample_rate = int(AudioServer::get_singleton()->get_mix_rate());
+	if (sample_rate <= 0) {
+		sample_rate = ProjectSettings::get_singleton()->get_setting("audio/driver/mix_rate");
+	}
 	int output_latency = ProjectSettings::get_singleton()->get_setting("audio/driver/output_latency");
 	int frame_size = closest_power_of_2(output_latency * sample_rate / 1000);
 	return IPLAudioSettings{ sample_rate, int(frame_size) };

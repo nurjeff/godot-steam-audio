@@ -9,7 +9,8 @@
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <atomic>
-#include <shared_mutex>
+#include <memory>
+#include <mutex>
 
 using namespace godot;
 
@@ -47,6 +48,16 @@ struct GlobalSteamAudioState {
 struct SteamAudioSource {
 	AudioStreamPlayer3D *player = nullptr;
 	IPLSource src;
+};
+
+class SteamAudioPlayer;
+
+// Shared by a player and its playbacks. The audio thread locks this rather than anything the player
+// owns: a mix that waited on the lock while the player was being destroyed used to wake up holding a
+// mutex in freed memory.
+struct SteamAudioPlayerLink {
+	std::mutex mux;
+	SteamAudioPlayer *player = nullptr;
 };
 
 struct SteamAudioSourceConfig {
@@ -91,10 +102,9 @@ inline IPLReflectionEffectType effective_reflection_type(const SteamAudioSourceC
 
 struct SteamAudioEffects {
 	IPLDirectEffect direct;
+	IPLBinauralEffect binaural;
 	IPLReflectionEffect refl;
-	IPLAmbisonicsDecodeEffect dec;
 	IPLAmbisonicsDecodeEffect refl_dec;
-	IPLAmbisonicsEncodeEffect enc;
 	IPLPathEffect path;
 	IPLAmbisonicsDecodeEffect path_dec;
 };
@@ -107,13 +117,14 @@ struct LocalSteamAudioBuffers {
 	IPLAudioBuffer refl_out;
 	IPLAudioBuffer path_ambi;
 	IPLAudioBuffer path_out;
-	IPLAudioBuffer ambi;
 	IPLAudioBuffer out;
 };
 
 struct LocalSteamAudioState {
 	SteamAudioSource src;
-	Vector3 dir_to_listener;
+	// From the listener to the source, in the listener's own space: what the HRTF takes. Written by
+	// tick(), read by the audio thread, which normalizes it again in case it reads half an update.
+	IPLVector3 hrtf_direction{ 0.0f, 0.0f, -1.0f };
 	IPLDirectEffectParams direct_outputs{ {} };
 	IPLReflectionEffectParams refl_outputs{ {} };
 	LocalSteamAudioBuffers bufs;
@@ -123,7 +134,6 @@ struct LocalSteamAudioState {
 	// Mid-band RT60 from the last reflection pass, for callers that want to know how much room
 	// there is. Only a Parametric or Hybrid simulator produces it; otherwise it stays zero.
 	std::atomic<float> reverb_time{ 0.0f };
-	std::shared_mutex mux;
 	// Pathing coefficients are owned by the simulator and rewritten every tick, so the game
 	// thread copies them here instead of handing the audio thread a pointer into that memory.
 	IPLPathEffectParams path_outputs{};

@@ -57,8 +57,11 @@
 		</method>
 	</methods>
 	<members>
+		<member name="ambisonics" type="bool" setter="set_ambisonics_on" getter="is_ambisonics_on" default="true">
+			Whether the direct sound goes through the HRTF, rendered as a point the way Steam Audio's own engine plugins do. Off, it reaches the listener unspatialized, with only distance, occlusion and the other direct effects applied.
+		</member>
 		<member name="ambisonics_order" type="int" setter="set_ambisonics_order" getter="get_ambisonics_order" default="1">
-			See [url=https://valvesoftware.github.io/steam-audio/doc/capi/ambisonics-encode-effect.html#_CPPv4N31IPLAmbisonicsEncodeEffectParams5orderE]IPLAmbisonicsEncodeEffectParams.order[/url].
+			Ambisonic order of this source's parametric reverb. The direct sound does not use it.
 		</member>
 		<member name="distance_attenuation" type="bool" setter="set_dist_attn_on" getter="is_dist_attn_on" default="true">
 			Whether Steam Audio's distance attenuation is enabled. On by default: a 3D source that does not get quieter with distance is rarely what anyone wants. Steam Audio's curve replaces Godot's rather than stacking with it, so enabling this disables the node's own [code]attenuation_model[/code]; turn it off to use Godot's curve instead.

@@ -9,6 +9,7 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/core/property_info.hpp>
 #include <algorithm>
+#include <cmath>
 
 SteamAudioStream::SteamAudioStream() {}
 SteamAudioStream::~SteamAudioStream() {}
@@ -19,7 +20,7 @@ Ref<AudioStreamPlayback> SteamAudioStream::_instantiate_playback() const {
 	Ref<SteamAudioStreamPlayback> playback;
 	playback.instantiate();
 	playback->set_stream(stream);
-	playback->parent = parent;
+	playback->link = link;
 
 	return playback;
 }
@@ -30,8 +31,27 @@ Ref<AudioStream> SteamAudioStream::get_stream() { return this->stream; }
 // ----------------------------------------------------
 // SteamAudioStreamPlayback
 
-SteamAudioStreamPlayback::SteamAudioStreamPlayback() {}
-SteamAudioStreamPlayback::~SteamAudioStreamPlayback() {}
+std::mutex SteamAudioStreamPlayback::live_mux;
+std::unordered_set<SteamAudioStreamPlayback *> SteamAudioStreamPlayback::live;
+
+SteamAudioStreamPlayback::SteamAudioStreamPlayback() {
+	std::lock_guard<std::mutex> lock(live_mux);
+	live.insert(this);
+}
+
+SteamAudioStreamPlayback::~SteamAudioStreamPlayback() {
+	std::lock_guard<std::mutex> lock(live_mux);
+	live.erase(this);
+}
+
+void SteamAudioStreamPlayback::pin_for_shutdown() {
+	std::lock_guard<std::mutex> lock(live_mux);
+	for (SteamAudioStreamPlayback *playback : live) {
+		// Two, because Godot already consults the class when a release leaves one reference.
+		playback->reference();
+		playback->reference();
+	}
+}
 
 static void fill_silence(AudioFrame *buffer, int32_t from, int32_t to) {
 	for (int32_t i = from; i < to; i++) {
@@ -62,13 +82,16 @@ static float baked_reverb_send(const LocalSteamAudioState *ls) {
 // costs, and its SH coefficients come back at much the same magnitude however far the route ran.
 // Measured across a two-storey house, the hall, the room directly above the source and the
 // landing all read within 0.8 dB of each other. Send the path in at the distance gain the source
-// already has, so a room away is quieter than next door. Occlusion is deliberately left out:
-// routing around the occluder is the whole point of a path.
+// already has, so a room away is quieter than next door.
+// With the source in sight, the path simulator returns the direct line itself as a path
+// (path_simulator.cpp), a second copy of the direct sound. Weighted by how occluded the source is,
+// the path takes over as the direct sound fades instead of doubling it.
 static float path_send(const LocalSteamAudioState *ls) {
-	if (!ls->cfg.is_dist_attn_on) {
-		return 1.0f;
+	float send = ls->cfg.is_occlusion_on ? 1.0f - ls->direct_outputs.occlusion : 1.0f;
+	if (ls->cfg.is_dist_attn_on) {
+		send *= ls->direct_outputs.distanceAttenuation;
 	}
-	return std::clamp(ls->direct_outputs.distanceAttenuation, 0.0f, 1.0f);
+	return std::clamp(send, 0.0f, 1.0f);
 }
 
 // Baked reverb is sent at the direct path's gain; simulated reflections already carry their
@@ -85,8 +108,38 @@ static void scale_buffer(IPLAudioBuffer &buffer, float gain) {
 	}
 }
 
+static IPLVector3 unit_or_ahead(IPLVector3 v) {
+	const float length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+	// Also catches NaN: a source at the listener has no direction to speak of.
+	if (!(length > 1e-6f)) {
+		return IPLVector3{ 0.0f, 0.0f, -1.0f };
+	}
+	return IPLVector3{ v.x / length, v.y / length, v.z / length };
+}
+
+// Writes the direct path into bufs.out. It goes through the HRTF as a point, as Steam Audio's own
+// engine plugins render it: encoding it to first-order ambisonics and decoding that binaurally took
+// 6 to 15 dB off everything above 1 kHz.
+static void render_direct(GlobalSteamAudioState *gs, LocalSteamAudioState *ls) {
+	if (!ls->cfg.is_ambisonics_on) {
+		for (int i = 0; i < ls->bufs.out.numChannels; i++) {
+			for (int j = 0; j < ls->bufs.out.numSamples; j++) {
+				ls->bufs.out.data[i][j] = ls->bufs.direct.data[i][j];
+			}
+		}
+		return;
+	}
+	iplAudioBufferDownmix(gs->ctx, &ls->bufs.direct, &ls->bufs.mono);
+	IPLBinauralEffectParams params{};
+	params.direction = unit_or_ahead(ls->hrtf_direction);
+	params.interpolation = IPL_HRTFINTERPOLATION_BILINEAR;
+	params.spatialBlend = 1.0f;
+	params.hrtf = gs->hrtf;
+	iplBinauralEffectApply(ls->fx.binaural, &params, &ls->bufs.mono, &ls->bufs.out);
+}
+
 int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int32_t frames) {
-	if (parent == nullptr || stream_playback.is_null() || Engine::get_singleton()->is_editor_hint()) {
+	if (link == nullptr || Engine::get_singleton()->is_editor_hint()) {
 		fill_silence(buffer, 0, frames);
 		return frames;
 	}
@@ -97,15 +150,15 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 		return frames;
 	}
 
-	LocalSteamAudioState *ls = parent->get_local_state();
-	if (ls == nullptr) { // probably being destroyed
+	std::lock_guard<std::mutex> inner_lock(mux);
+	if (stream_playback.is_null()) {
 		fill_silence(buffer, 0, frames);
 		return frames;
 	}
-	std::unique_lock lock(ls->mux);
-
-	// parent may have been deleted while we waited for the lock
-	if (parent == nullptr || (ls = parent->get_local_state()) == nullptr || !ls->src.player) {
+	// The player's destructor takes this one, so either it is gone or it stays until this block is out.
+	std::lock_guard<std::mutex> lock(link->mux);
+	LocalSteamAudioState *ls = link->player == nullptr ? nullptr : link->player->get_local_state();
+	if (ls == nullptr || !ls->src.player) {
 		fill_silence(buffer, 0, frames);
 		return frames;
 	}
@@ -205,27 +258,13 @@ int SteamAudioStreamPlayback::process_block(GlobalSteamAudioState *gs, LocalStea
 	}
 	// Only the direct path; reflections and paths are fed from the dry input.
 	scale_buffer(ls->bufs.direct, ls->cfg.direct_mix);
+	render_direct(gs, ls);
 
 	IPLAmbisonicsDecodeEffectParams dec_params{};
 	dec_params.orientation = gs->listener_coords;
 	dec_params.order = ls->cfg.ambisonics_order;
 	dec_params.hrtf = gs->hrtf;
 	dec_params.binaural = IPL_TRUE;
-
-	if (ls->cfg.is_ambisonics_on) {
-		IPLAmbisonicsEncodeEffectParams enc_params{};
-		enc_params.direction = ipl_vec3_from(ls->dir_to_listener);
-		enc_params.order = ls->cfg.ambisonics_order;
-		iplAmbisonicsEncodeEffectApply(
-				ls->fx.enc, &enc_params,
-				&ls->bufs.direct, &ls->bufs.ambi);
-
-		iplAmbisonicsDecodeEffectApply(
-				ls->fx.dec, &dec_params,
-				&ls->bufs.ambi, &ls->bufs.out);
-	} else {
-		iplAudioBufferMix(gs->ctx, &ls->bufs.direct, &ls->bufs.out);
-	}
 
 	// Parametric reverb carries decay times rather than an impulse response. Out of reflection
 	// range the simulator stops updating this source, so reusing its last result would both cost
@@ -331,25 +370,12 @@ int SteamAudioStreamPlayback::process_tail_block(GlobalSteamAudioState *gs, Loca
 	dec_params.binaural = IPL_TRUE;
 
 	bool remaining = false;
-	for (int i = 0; i < ls->bufs.out.numChannels; i++) {
-		for (int j = 0; j < ls->bufs.out.numSamples; j++) {
-			ls->bufs.out.data[i][j] = 0.0f;
-		}
-	}
-
 	if (iplDirectEffectGetTail(ls->fx.direct, &ls->bufs.direct) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
 		remaining = true;
 	}
 	scale_buffer(ls->bufs.direct, ls->cfg.direct_mix);
-	if (ls->cfg.is_ambisonics_on) {
-		IPLAmbisonicsEncodeEffectParams enc_params{};
-		enc_params.direction = ipl_vec3_from(ls->dir_to_listener);
-		enc_params.order = ls->cfg.ambisonics_order;
-		iplAmbisonicsEncodeEffectApply(ls->fx.enc, &enc_params, &ls->bufs.direct, &ls->bufs.ambi);
-		iplAmbisonicsDecodeEffectApply(ls->fx.dec, &dec_params, &ls->bufs.ambi, &ls->bufs.out);
-	} else {
-		iplAudioBufferMix(gs->ctx, &ls->bufs.direct, &ls->bufs.out);
-	}
+	// The binaural effect's own convolution tail drains through the extra blocks fed below.
+	render_direct(gs, ls);
 
 	if (ls->cfg.is_pathing_on) {
 		if (iplPathEffectGetTail(ls->fx.path, &ls->bufs.path_ambi) == IPL_AUDIOEFFECTSTATE_TAILREMAINING) {
@@ -404,47 +430,73 @@ void SteamAudioStreamPlayback::restart(const Ref<AudioStream> &p_stream, float p
 		return;
 	}
 
-	stream = p_stream;
-	stream_playback = stream->instantiate_playback();
-	stream_playback->start(p_from_offset);
-	pending_pos = 0;
-	pending_len = 0;
-	source_done = false;
-	tail_active = false;
-	tail_done = false;
-	tail_requested.store(false);
+	Ref<AudioStreamPlayback> playback = p_stream->instantiate_playback();
+	playback->start(p_from_offset);
+	Ref<AudioStream> old_stream = p_stream;
+	{
+		std::lock_guard<std::mutex> lock(mux);
+		std::swap(stream, old_stream);
+		std::swap(stream_playback, playback);
+		pending_pos = 0;
+		pending_len = 0;
+		source_done = false;
+		tail_active = false;
+		tail_done = false;
+		tail_requested.store(false);
+	}
+	// The previous stream and playback are dropped here, outside the lock.
 }
 
 void SteamAudioStreamPlayback::_start(double from_pos) {
-	if (stream_playback == nullptr) {
-		if (stream.is_valid()) {
-			is_active.store(true);
-			restart(stream, float(from_pos));
+	Ref<AudioStream> to_start;
+	{
+		std::lock_guard<std::mutex> lock(mux);
+		if (stream_playback.is_valid()) {
+			if (!stream_playback->is_playing()) {
+				stream_playback->start(from_pos);
+				is_active.store(true);
+			}
+			return;
 		}
-		return;
-	} else if (stream_playback->is_playing()) {
-		return;
+		to_start = stream;
 	}
-	stream_playback->start(from_pos);
-	is_active.store(true);
+	if (to_start.is_valid()) {
+		is_active.store(true);
+		restart(to_start, float(from_pos));
+	}
 }
 
 void SteamAudioStreamPlayback::release_inner() {
-	_stop();
-	stream_playback.unref();
-	stream.unref();
+	Ref<AudioStreamPlayback> playback;
+	Ref<AudioStream> inner;
+	{
+		std::lock_guard<std::mutex> lock(mux);
+		is_active.store(false);
+		tail_active = false;
+		tail_done = true;
+		std::swap(stream_playback, playback);
+		std::swap(stream, inner);
+	}
 }
 
 void SteamAudioStreamPlayback::_stop() {
+	std::lock_guard<std::mutex> lock(mux);
 	is_active.store(false);
 	tail_active = false;
 	tail_done = true;
-	if (stream_playback == nullptr || !stream_playback->is_playing()) {
-		return;
+	if (stream_playback.is_valid() && stream_playback->is_playing()) {
+		stream_playback->stop();
 	}
-	stream_playback->stop();
 }
 
 bool SteamAudioStreamPlayback::_is_playing() const { return is_active; }
-void SteamAudioStreamPlayback::set_stream(Ref<AudioStream> p_stream) { stream = p_stream; }
-Ref<AudioStreamPlayback> SteamAudioStreamPlayback::get_stream_playback() { return this->stream_playback; }
+
+void SteamAudioStreamPlayback::set_stream(Ref<AudioStream> p_stream) {
+	std::lock_guard<std::mutex> lock(mux);
+	stream = p_stream;
+}
+
+Ref<AudioStreamPlayback> SteamAudioStreamPlayback::get_stream_playback() {
+	std::lock_guard<std::mutex> lock(mux);
+	return stream_playback;
+}
